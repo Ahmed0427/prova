@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD="$ROOT/build"
+SOLANG_DIR="${SOLANG_DIR:-$HOME/void/projects/solang}"
+SOLANG_BRANCH="sp1-target"
+
+if [[ -z "${LLVM_SYS_160_PREFIX:-}" ]]; then
+    for prefix in "$HOME/llvm16/llvm16.0" "$HOME/opt/solang-llvm/llvm16.0"; do
+        [[ -d "$prefix" ]] && export LLVM_SYS_160_PREFIX="$prefix" && break
+    done
+fi
+export PATH="$HOME/.sp1/bin:$PATH"
+
+usage() {
+    cat <<EOF
+usage: ./prova COMMAND
+
+  setup                     build Solang (branch $SOLANG_BRANCH) and its RISC-V stdlib
+  compile FILE.sol [NAME]   compile a contract to build/contract.o
+  run STEP...               execute transactions in SP1, one after another
+  prove STEP...             execute all steps but the last, then prove the last one
+  inspect                   symbols, ISA and disassembly of build/contract.o
+  clean                     remove build/
+
+a STEP is one quoted transaction:
+  'deploy ARG...'           run the constructor
+  'SIGNATURE ARG...'        call a function, like 'inc(uint32) 5' or 'get()'
+ARG is one 32-byte ABI word: 42, -1, true, false or 0xHEX.
+
+example:
+  ./prova compile contracts/incrementer.sol
+  ./prova run 'deploy 5' 'inc(uint32) 5' 'get()'
+
+env: SOLANG_DIR (default ~/void/projects/solang), LLVM_SYS_160_PREFIX
+EOF
+}
+
+step() { printf '\033[1;34m==> %s\033[0m\n' "$*"; }
+die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+solang_bin() { echo "$SOLANG_DIR/target/debug/solang"; }
+
+check_branch() {
+    local branch
+    branch="$(git -C "$SOLANG_DIR" branch --show-current 2>/dev/null || true)"
+    if [[ "$branch" != "$SOLANG_BRANCH" ]]; then
+        die "$SOLANG_DIR is on branch '$branch', not '$SOLANG_BRANCH'"
+    fi
+}
+
+llvm_bin_dir() {
+    local dir
+    IFS=: read -ra dirs <<<"$PATH"
+    for dir in "${dirs[@]}"; do
+        if [[ -x "$dir/llvm-objdump" ]] && "$dir/llvm-objdump" --version 2>/dev/null | grep -q riscv64; then
+            echo "$dir"
+            return
+        fi
+    done
+    die "no llvm-objdump with RISC-V support on PATH"
+}
+
+cmd_setup() {
+    check_branch
+    [[ -n "${LLVM_SYS_160_PREFIX:-}" ]] || die "set LLVM_SYS_160_PREFIX to Solang's LLVM 16"
+    export PATH="$LLVM_SYS_160_PREFIX/bin:$PATH"
+
+    # target/riscv is shared with the r55 branch, which builds it with other flags.
+    step "rebuilding the RISC-V stdlib bitcode"
+    rm -rf "$SOLANG_DIR/target/riscv"
+    make -C "$SOLANG_DIR/stdlib" -s
+
+    step "building solang"
+    (cd "$SOLANG_DIR" && cargo build -q)
+    echo "solang: $(solang_bin)"
+}
+
+cmd_compile() {
+    [[ $# -ge 1 ]] || die "usage: ./prova compile FILE.sol [NAME]"
+    local file name out
+    file="$(realpath "$1")"
+    [[ -f "$file" ]] || die "$1 not found"
+    [[ -x "$(solang_bin)" ]] || die "solang is not built, run ./prova setup"
+    check_branch
+
+    out="$BUILD/out"
+    rm -rf "$out"
+    mkdir -p "$out"
+
+    step "compiling ${1} with solang --target riscv"
+    "$(solang_bin)" compile --target riscv "$file" -o "$out" 2>&1 \
+        | grep -v "is not a recognized feature" || true
+
+    mapfile -t objects < <(find "$out" -name '*.o' | sort)
+    [[ ${#objects[@]} -gt 0 ]] || die "no object file was produced"
+
+    if [[ $# -ge 2 ]]; then
+        name="$2"
+    elif [[ ${#objects[@]} -eq 1 ]]; then
+        name="$(basename "${objects[0]}" .o)"
+    else
+        die "$1 has several contracts, pick one: $(basename -a "${objects[@]}" | sed 's/\.o$//' | tr '\n' ' ')"
+    fi
+    [[ -f "$out/$name.o" ]] || die "no contract named $name"
+
+    cp "$out/$name.o" "$BUILD/contract.o"
+    echo "$name" >"$BUILD/contract.name"
+    echo "build/contract.o <- $name ($(stat -c %s "$BUILD/contract.o") bytes)"
+}
+
+require_contract() {
+    [[ -f "$BUILD/contract.o" ]] || die "no contract yet, run ./prova compile FILE.sol"
+    step "contract: $(cat "$BUILD/contract.name")"
+}
+
+host() {
+    require_contract
+    [[ $# -ge 1 ]] || die "give at least one step, see ./prova help"
+    (cd "$ROOT" && cargo run --release -q -p prova-host -- "$@")
+}
+
+cmd_inspect() {
+    require_contract
+    local llvm nm objdump readelf
+    llvm="$(llvm_bin_dir)"
+    nm="$llvm/llvm-nm"
+    objdump="$llvm/llvm-objdump"
+    readelf="$llvm/llvm-readelf"
+
+    echo "symbols (T = exported to the guest, U = the guest must provide it):"
+    "$nm" "$BUILD/contract.o" | grep -E ' [TU] ' | sed 's/^/  /'
+    echo "ISA: $("$readelf" -A "$BUILD/contract.o" | grep -o 'rv64[a-z0-9_]*' | head -1)"
+    "$objdump" -d --no-show-raw-insn "$BUILD/contract.o" >"$BUILD/contract.s"
+    echo "disassembly: build/contract.s"
+}
+
+case "${1:-help}" in
+setup) shift; cmd_setup "$@" ;;
+compile) shift; cmd_compile "$@" ;;
+run) shift; host "$@" ;;
+prove) shift; host --prove "$@" ;;
+inspect) shift; cmd_inspect ;;
+clean) rm -rf "$BUILD" ;;
+help | -h | --help) usage ;;
+*) usage; exit 1 ;;
+esac
