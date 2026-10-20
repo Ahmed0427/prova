@@ -1,18 +1,20 @@
 # Calls between native contracts: each call runs in its own frame, and a
 # revert undoes only that frame's storage writes and events.
 contract contracts/calls.sol
+# Not 0xa and 0xb: on Ethereum those are precompiles (KZG, BLS12-381), and
+# the benchmark runs this file in revm too.
 
---to 0xb deploy callee
---to 0xa deploy caller 0xb
-    storage 0x0 = 0xb
+--to 0xbbbb deploy callee
+--to 0xaaaa deploy caller 0xbbbb
+    storage 0x0 = 0xbbbb
 
---to 0xa
+--to 0xaaaa
 callSet(uint256) 7
     returns 14
     # the callee's event, with the callee's address
     log Set(uint256) data 7
     storage 0x1 = 1
-    storage 0xb 0x0 = 7
+    storage 0xbbbb 0x0 = 7
 
 # A calls B, B writes and emits, then reverts; A catches it and continues.
 # B's write (0x9) and event are gone; A's own write and event stay.
@@ -20,44 +22,44 @@ tryRevert(uint256) 9
     returns false 7
     log Caught(string) data "callee reverted"
     storage 0x1 = 2
-    storage 0xb 0x0 = 7
+    storage 0xbbbb 0x0 = 7
 # B does not revert for small values: its write stays.
 tryRevert(uint256) 3
     returns true 3
     log Set(uint256) data 3
-    storage 0xb 0x0 = 3
+    storage 0xbbbb 0x0 = 3
 
 # A low-level call returns the revert data.
 rawRevert(uint256) 9
     returns false hex"08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000f63616c6c65652072657665727465640000000000000000000000000000000000"
     logs 0
-    storage 0xb 0x0 = 3
+    storage 0xbbbb 0x0 = 3
 
 # Not caught: B's revert data ends the whole transaction, A's write included.
 uncaught(uint256) 9
     error "callee reverted"
     storage 0x1 = 4
-    storage 0xb 0x0 = 3
+    storage 0xbbbb 0x0 = 3
 
 # In B, msg.sender is A and address(this) is B.
 who()
-    returns 0xa 0xb
+    returns 0xaaaa 0xbbbb
 
 # A -> B -> A: re-entering A while it runs.
 reenter()
     # steps: 4, then +1 in A, +100 in A again (via B), +10 back in A
     storage 0x1 = 0x73
-    storage 0xb 0x0 = 4
+    storage 0xbbbb 0x0 = 4
 
 staticRead()
     returns true hex"0000000000000000000000000000000000000000000000000000000000000004"
 staticWrite(uint256) 1
     returns false
-    storage 0xb 0x0 = 4
+    storage 0xbbbb 0x0 = 4
 
 # delegatecall: B's code writes A's slot 0 (`target`), not B's.
 delegateSet(uint256) 0xdead
     returns true
     log Set(uint256) data 0xdead
     storage 0x0 = 0xdead
-    storage 0xb 0x0 = 4
+    storage 0xbbbb 0x0 = 4

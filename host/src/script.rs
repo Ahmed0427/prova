@@ -57,7 +57,7 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
         let at = |err: String| format!("line {line}: {err}");
 
         if !content.starts_with(char::is_whitespace) {
-            if content.starts_with("contract ") {
+            if content.starts_with("contract ") || content.starts_with("solang ") {
                 continue;
             }
             let tokens: Vec<&str> = content.split_whitespace().collect();

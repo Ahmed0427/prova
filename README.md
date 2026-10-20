@@ -60,6 +60,7 @@ seconds. Output for one step:
 ```
 
 The `sload`/`sstore`/`return` lines are the contract calling into the guest.
+That trace costs most of the cycles shown; `./prova bench` turns it off.
 
 ## Commands
 
@@ -70,8 +71,12 @@ The `sload`/`sstore`/`return` lines are the contract calling into the guest.
 | `./prova run STEP...` | Executes the steps in SP1, in order. Each step starts from the state the previous one left. |
 | `./prova prove STEP...` | Executes every step except the last, proves the last one, verifies the proof, then shows that a tampered copy is rejected. |
 | `./prova test [FILE...]` | Runs test scripts, by default every `tests/*.test`. See [Tests](#tests). |
+| `./prova bench FILE.test...` | Runs a test script's steps natively and as `solc --optimize` bytecode in revm (a second SP1 guest), checks both give the same public values, and compares cycles. See [docs/benchmarks.md](docs/benchmarks.md). |
 | `./prova inspect` | Prints the object's symbols and instruction set, and writes its disassembly to `build/contract.s`. |
 | `./prova clean` | Removes `build/`. |
+
+`SOLANG_FLAGS` adds flags to `solang compile` (e.g. `SOLANG_FLAGS=--no-cse`);
+a test file can also list them on a `solang FLAGS` line.
 
 A step is one quoted transaction, optionally starting with context options
 (see [Transaction context](#transaction-context)):
@@ -99,8 +104,8 @@ ends the transaction. `tests/calls.test` shows it:
 
 ```bash
 ./prova compile contracts/calls.sol
-./prova run '--to 0xb deploy callee' '--to 0xa deploy caller 0xb' \
-    '--to 0xa tryRevert(uint256) 9'
+./prova run '--to 0xbbbb deploy callee' '--to 0xaaaa deploy caller 0xbbbb' \
+    '--to 0xaaaa tryRevert(uint256) 9'
 ```
 
 ## Transaction context
@@ -209,6 +214,7 @@ contracts/      example contracts
 tests/          test scripts for ./prova test
 common/         the input and public values types, shared by guest and host
 guest/          the SP1 program; links build/contracts/*.o
+evm-guest/      the benchmark's baseline: the same transactions as solc bytecode in revm
 host/           runs the guest: execute, or prove and verify
 build/          compiler output (git-ignored)
 docs/spec.md    the interface between a contract object and its runtime

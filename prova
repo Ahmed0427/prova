@@ -22,6 +22,7 @@ usage: ./prova COMMAND
   run STEP...               execute transactions in SP1, one after another
   prove STEP...             execute all steps but the last, then prove the last one
   test [FILE...]            run test scripts (default: tests/*.test)
+  bench FILE...             run a test script natively and in revm, compare cycles
   inspect                   symbols, ISA and disassembly of each contract
   clean                     remove build/
 
@@ -34,7 +35,8 @@ example:
   ./prova compile contracts/incrementer.sol
   ./prova run 'deploy 5' 'inc(uint32) 5' 'get()'
 
-env: SOLANG_DIR (default ~/void/projects/solang), LLVM_SYS_160_PREFIX
+env: SOLANG_DIR (default ~/void/projects/solang), LLVM_SYS_160_PREFIX,
+     SOLANG_FLAGS (extra flags for solang compile, e.g. --no-cse)
 EOF
 }
 
@@ -97,7 +99,8 @@ cmd_compile() {
         i=$((i + 1))
         mkdir -p "$out"
         step "compiling $file with solang --target riscv"
-        "$(solang_bin)" compile --target riscv "$(realpath "$file")" -o "$out" 2>&1 \
+        # shellcheck disable=SC2086 # SOLANG_FLAGS is a list of flags
+        "$(solang_bin)" compile --target riscv ${SOLANG_FLAGS:-} "$(realpath "$file")" -o "$out" 2>&1 \
             | grep -v "is not a recognized feature" || true
         for object in "$out"/*.o; do
             [[ -f "$object" ]] || die "no object file was produced for $file"
@@ -127,16 +130,24 @@ host() {
     (cd "$ROOT" && cargo run --release -q -p prova-host -- "$@")
 }
 
-# Each test file names its contracts on `contract FILE.sol` lines.
+# Each test file names its contracts on `contract FILE.sol` lines, and may
+# give extra Solang flags on a `solang FLAGS` line.
+compile_for() {
+    local file="$1" contract
+    mapfile -t contract < <(sed -n 's/#.*//; s/^contract[[:space:]]\+\([^[:space:]]*\).*/\1/p' "$file")
+    [[ ${#contract[@]} -ge 1 ]] || die "$file has no 'contract FILE.sol' line"
+    (cd "$ROOT" && SOLANG_FLAGS="${SOLANG_FLAGS:-} $(sed -n 's/#.*//; s/^solang[[:space:]]\+//p' "$file")" \
+        cmd_compile "${contract[@]}") >/dev/null
+    printf '%s\n' "${contract[@]}"
+}
+
 cmd_test() {
-    local files=("$@") failed=() file contract
+    local files=("$@") failed=() file
     [[ ${#files[@]} -gt 0 ]] || files=("$ROOT"/tests/*.test)
 
     for file in "${files[@]}"; do
         file="$(realpath "$file")"
-        mapfile -t contract < <(sed -n 's/#.*//; s/^contract[[:space:]]\+\([^[:space:]]*\).*/\1/p' "$file")
-        [[ ${#contract[@]} -ge 1 ]] || die "$file has no 'contract FILE.sol' line"
-        (cd "$ROOT" && cmd_compile "${contract[@]}") >/dev/null
+        compile_for "$file" >/dev/null
         file="$(realpath --relative-to="$ROOT" "$file")"
         step "test $file"
         (cd "$ROOT" && cargo run --release -q -p prova-host -- --test "$file") || failed+=("$file")
@@ -146,6 +157,22 @@ cmd_test() {
         die "failed: ${failed[*]}"
     fi
     echo "all ${#files[@]} test files passed"
+}
+
+# Runs a test file's steps natively and as solc bytecode in revm.
+cmd_bench() {
+    [[ $# -ge 1 ]] || die "usage: ./prova bench FILE.test..."
+    command -v solc >/dev/null || die "the benchmark needs solc on PATH"
+    local file contract
+    for file in "$@"; do
+        file="$(realpath "$file")"
+        mapfile -t contract < <(compile_for "$file")
+        rm -rf "$BUILD/evm"
+        (cd "$ROOT" && solc --optimize --bin --bin-runtime -o "$BUILD/evm" "${contract[@]}") >/dev/null
+        file="$(realpath --relative-to="$ROOT" "$file")"
+        step "bench $file (solc $(solc --version | sed -n 's/^Version: \([^+]*\).*/\1/p') --optimize)"
+        (cd "$ROOT" && cargo run --release -q -p prova-host -- --bench "$file")
+    done
 }
 
 cmd_inspect() {
@@ -168,6 +195,7 @@ compile) shift; cmd_compile "$@" ;;
 run) shift; host "$@" ;;
 prove) shift; host --prove "$@" ;;
 test) shift; cmd_test "$@" ;;
+bench) shift; cmd_bench "$@" ;;
 inspect) shift; cmd_inspect ;;
 clean) rm -rf "$BUILD" ;;
 help | -h | --help) usage ;;

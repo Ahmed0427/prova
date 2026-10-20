@@ -96,7 +96,7 @@ which are committed right after this.)
 ## 6. Commits
 
 - Solang: `c4fc132b revert with Panic(0x41) for abi lengths above 2^64-1 as solc does`
-- prova: filled in by the next commit.
+- prova: `162cf16 revert with Panic(0x41) on oversized abi lengths, as solc`
 
 ## 7. Open issues / follow-ups
 

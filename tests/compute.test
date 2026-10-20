@@ -1,0 +1,27 @@
+# Compute-heavy functions, also the benchmark's first workload. Results
+# checked against Python.
+contract contracts/compute.sol
+# Solang's common subexpression elimination misplaces an array length in
+# sort() (on every target); see docs/log/011.
+solang --no-cse
+
+deploy
+fib(uint256) 50
+    returns 0x2ee333961
+fib(uint256) 300
+    returns 0x8a4ba39e1a1741497bbbef460a25486ee575f510e921b33e2e10
+primes(uint256) 100
+    returns 25
+primes(uint256) 1000
+    returns 168
+sort(uint256) 20
+    returns 0x3f15d9581094510b4eb65a333269958
+sort(uint256) 1
+    returns 0x53dc167e
+sort(uint256) 100
+    returns 0x27f78898db459b9e848cf0154be01509ee5c85478afc6a7eadffa41c9143db16
+hashChain(uint256) 3
+    returns 0xb1dfe1675e1f3e50621a30de3c781878e545b811232bc4a29662d8e021a43bc4
+    syscall KECCAK_PERMUTE 3
+hashChain(uint256) 100
+    syscall KECCAK_PERMUTE 100

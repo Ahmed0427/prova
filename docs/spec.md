@@ -287,6 +287,7 @@ struct Input {
                                // None: call the contract at context.address
     calldata: Vec<u8>,         // constructor args (deploy) or selector + args (call)
     state: Vec<Account>,       // the state the transaction starts from, sorted by address
+    trace: bool,               // print a line per __sys_* call (off for benchmarks); not committed
 }
 struct Account {
     address: [u8; 20],

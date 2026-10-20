@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sp1-sdk = { version = "6.8.0", features = ["blocking"] }
+# profiling: the guests' cycle-tracker regions (setup, execute, commit).
+sp1-sdk = { version = "6.8.0", features = ["blocking", "profiling"] }
 tiny-keccak = { version = "2", features = ["keccak"] }
 prova-common = { path = "../common" }
 tokio = { version = "1", features = ["sync"] }
