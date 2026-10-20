@@ -1,0 +1,42 @@
+# msg.sender, msg.value, address(this), block.number and block.timestamp come
+# from the host's transaction context. Defaults: from 0x1, to 0xc0de,
+# block 1, timestamp 1, value 0.
+contract contracts/context.sol
+
+# The implicit check: a constructor that is not payable rejects value.
+--value 1 deploy
+    reverts
+--from 0xa11ce deploy
+    storage 0x0 = 0xa11ce
+owner()
+    returns 0xa11ce
+
+whoami()
+    returns 1
+--from 0xb0b whoami()
+    returns 0xb0b
+--from 0xffffffffffffffffffffffffffffffffffffffff whoami()
+    returns 0xffffffffffffffffffffffffffffffffffffffff
+me()
+    returns 0xc0de
+--to 0x1234 me()
+    returns 0x1234
+when()
+    returns 1 1
+--block 77 --timestamp 1700000000 when()
+    returns 77 1700000000
+
+--value 5 deposit()
+    storage 0x1 = 5
+--value 7 deposit()
+    storage 0x1 = 12
+deposits()
+    returns 12
+# Value sent to a function that is not payable reverts, as in solc.
+--value 1 whoami()
+    reverts
+
+--from 0xa11ce onlyOwner()
+    returns true
+--from 0xb0b onlyOwner()
+    reverts

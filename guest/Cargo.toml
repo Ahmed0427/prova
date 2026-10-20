@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 sp1-zkvm = "6.8.0"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+prova-common = { path = "../common" }
 
 [workspace]
 

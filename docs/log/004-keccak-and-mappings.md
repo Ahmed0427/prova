@@ -213,7 +213,7 @@ test result: ok. 3 passed
 ## 6. Commits
 
 - Solang: `9fa1a001 add keccak256 syscall and solc mapping slots to riscv target`
-- prova: filled in by the next commit.
+- prova: `3efc545 add keccak256 syscall on the SP1 precompile and mapping tests`
 
 ## 7. Open issues / follow-ups
 
