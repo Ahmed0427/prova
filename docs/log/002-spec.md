@@ -90,7 +90,7 @@ Two deviations from solc found:
 
 ## 6. Commits
 
-- prova: filled in by the next commit.
+- prova: `ce67a79 add contract runtime interface spec`
 - Solang: none.
 
 ## 7. Open issues / follow-ups

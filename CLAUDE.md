@@ -47,5 +47,5 @@ contracts/*.sol --solang--> build/contract.o --link--> guest --SP1--> public val
 - Proving needs a lot of RAM (did not finish on 14 GB). Execution (`run`) is cheap after the first `sp1-sdk` build.
 - Re-run `./prova setup` after switching Solang branches: the r55 branch builds `target/riscv` with different flags and `make` won't notice.
 - Unsupported Solidity features (Solang panics with `unimplemented`): mappings, `keccak256`, `string`/`bytes`, dynamic arrays, events, `msg.sender`, external calls.
-- Known deviations from solc: division/modulo by zero doesn't revert (RISC-V doesn't trap, no check is emitted); calldata longer than the arguments reverts with `Panic(0)`.
+- Known deviations from solc: calldata longer than the arguments reverts with `Panic(0)`; `type(intN).min / -1` reverts even in `unchecked`. RISC-V never traps on arithmetic, so every check wasm gets "for free" from a trap must be emitted explicitly (see log 003).
 - Starting storage is host-supplied and only made public, not proven to be real chain state.

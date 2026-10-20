@@ -158,5 +158,5 @@ docs/review.md  a longer walkthrough of the Solang side and the design
 - **What's not supported yet:** mappings, `keccak256`, `string`/`bytes`,
   dynamic arrays, events, `msg.sender`, external calls. Using them makes
   Solang panic with `unimplemented`.
-- **Known deviations from solc:** division by zero doesn't revert (it
-  returns all-ones), and trailing calldata reverts. See `docs/spec.md`.
+- **Known deviations from solc:** trailing calldata reverts, and
+  `min / -1` reverts even in `unchecked`. See `docs/spec.md`.
