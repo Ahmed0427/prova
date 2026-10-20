@@ -94,6 +94,14 @@ as a tuple, so strings get an offset and a tail. Hex is right-aligned like a num
 the full word: `bytes4 0xcafebabe` is
 `0xcafebabe00000000000000000000000000000000000000000000000000000000`.
 
+## Benchmark
+
+`./prova bench FILE.test` runs a test script's steps natively and as solc
+bytecode in revm (both in SP1), checks they agree, and compares cycles. An
+ERC-20 `transfer` executes in 16k cycles natively against 57k in revm (139k
+against 364k with setup and commit); compute-heavy code is 3-63× faster. See
+[docs/benchmarks.md](docs/benchmarks.md).
+
 ## Calls between contracts
 
 Contracts linked into the same guest can call each other (`other.f(x)`,
@@ -218,6 +226,7 @@ evm-guest/      the benchmark's baseline: the same transactions as solc bytecode
 host/           runs the guest: execute, or prove and verify
 build/          compiler output (git-ignored)
 docs/spec.md    the interface between a contract object and its runtime
+docs/benchmarks.md  native vs revm cycles, and how to reproduce them
 docs/log/       one entry per change: what, why, decisions, verification
 docs/review.md  a longer walkthrough of the Solang side and the design
 ```
