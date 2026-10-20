@@ -24,7 +24,7 @@ Everything goes through the `./prova` bash script, which sets `PATH` (`~/.sp1/bi
 
 Tests: `./prova test` runs the scripts in `tests/*.test`. Each names its contract (`contract FILE.sol [NAME]`), which the script compiles; then `prova-host --test FILE` runs the unindented lines as steps (sharing storage, like `run`) and checks the indented expectations under each: `reverts`, `returns WORD...`, `output 0xHEX`, `storage SLOT = VALUE`. A step without `reverts` must succeed. Each file rebuilds the guest (new `contract.o`), so a file takes ~30 s. The Solang-side tests are `cargo test --test riscv` in the Solang checkout; they need `LLVM_SYS_160_PREFIX` set. Run both before every commit.
 
-Change log: every logical change gets `docs/log/NNN-name.md` (sections: what and why, decision, how it works, real code, verification, commits, open issues) and a line in `docs/log/README.md`. External requirements: SP1 toolchain (`sp1up`), Solang at `$SOLANG_DIR` (default `~/void/projects/solang`), Solang's LLVM 16 (`LLVM_SYS_160_PREFIX`, default `~/llvm16/llvm16.0`), and a system LLVM with the RISC-V backend (`llc`, `llvm-objdump`) — Solang's LLVM can't emit RISC-V, so it shells out to the system `llc`.
+Change log: every logical change gets `docs/log/NNN-name.md` (sections: what and why, decision, how it works, real code, verification, commits, open issues) and a line in `docs/log/README.md`. `docs/spec.md` is the contract/runtime interface (every `__sys_*` import, word layout, input and public values, each tagged implemented/planned); keep it current with every change to the interface. External requirements: SP1 toolchain (`sp1up`), Solang at `$SOLANG_DIR` (default `~/void/projects/solang`), Solang's LLVM 16 (`LLVM_SYS_160_PREFIX`, default `~/llvm16/llvm16.0`), and a system LLVM with the RISC-V backend (`llc`, `llvm-objdump`) — Solang's LLVM can't emit RISC-V, so it shells out to the system `llc`.
 
 ## Architecture
 
@@ -47,4 +47,5 @@ contracts/*.sol --solang--> build/contract.o --link--> guest --SP1--> public val
 - Proving needs a lot of RAM (did not finish on 14 GB). Execution (`run`) is cheap after the first `sp1-sdk` build.
 - Re-run `./prova setup` after switching Solang branches: the r55 branch builds `target/riscv` with different flags and `make` won't notice.
 - Unsupported Solidity features (Solang panics with `unimplemented`): mappings, `keccak256`, `string`/`bytes`, dynamic arrays, events, `msg.sender`, external calls.
+- Known deviations from solc: division/modulo by zero doesn't revert (RISC-V doesn't trap, no check is emitted); calldata longer than the arguments reverts with `Panic(0)`.
 - Starting storage is host-supplied and only made public, not proven to be real chain state.
