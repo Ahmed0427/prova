@@ -10,3 +10,4 @@ the real diff, verification, commits, and open issues.
 | [002](002-spec.md) | `docs/spec.md`: the contract/runtime interface, implemented and planned | 0 |
 | [003](003-division-checks.md) | division/modulo by zero and `min / -1` revert like solc | 1 |
 | [004](004-keccak-and-mappings.md) | `__sys_keccak256` on SP1's keccak precompile; solc mapping slots; no storage packing | 1 |
+| [005](005-transaction-context.md) | `msg.sender`/`msg.value`/`address(this)`/block info from a host-supplied context; non-payable check; shared `prova-common` types | 1 |

@@ -32,14 +32,15 @@ Change log: every logical change gets `docs/log/NNN-name.md` (sections: what and
 contracts/*.sol --solang--> build/contract.o --link--> guest --SP1--> public values (+ proof)
 ```
 
-- **Workspace layout:** the root workspace contains only `host`; `guest` is `exclude`d and is its own workspace (built for the `succinct` toolchain). `host/build.rs` calls `sp1_build::build_program("../guest")` and the host embeds the ELF via `include_elf!("prova-guest")`.
+- **Workspace layout:** the root workspace contains `host` and `common`; `guest` is `exclude`d and is its own workspace (built for the `succinct` toolchain). `host/build.rs` calls `sp1_build::build_program("../guest")` and the host embeds the ELF via `include_elf!("prova-guest")`.
 - **Linking the contract:** `guest/build.rs` passes `build/contract.o` as a raw linker arg. Both build scripts `rerun-if-changed` on it, so compiling a different contract rebuilds the guest (and changes the verifying key). Only one contract can be linked at a time.
 - **Contract ABI with the guest** (the object must have exactly this interface):
   - exports `solang_deploy(ptr, len)` and `solang_call(ptr, len)`;
   - imports `__sys_sload`, `__sys_sstore`, `__sys_keccak256`, `__sys_return`, `__sys_revert` (see `docs/spec.md` for the full list), defined in `guest/src/main.rs`. These are ordinary C-ABI function calls into Rust, **not** SP1 syscalls. 256-bit slots/values are passed as four `u64` limbs, least significant first (`to_word`/`to_limbs`).
   - `__sys_return`/`__sys_revert` never return: they commit and call `syscall_halt`. Reaching the end of `main` is `unreachable!`.
-- **Transaction flow in the guest:** read `(deploy: bool, calldata: Vec<u8>, storage: Vec<(Word, Word)>)` → commit those three → call the entry point → on return commit `(false, output, storage_after)`, on revert commit `(true, output, storage_before)`. Storage is a `static mut BTreeMap`.
-- **Public values contract:** the order/types the guest commits must match `Public::read`/`Public::write` in `host/src/main.rs` exactly (6 fields). Change both together. The host's `prove` path forges a copy by flipping `reverted` to demonstrate verification rejects tampering.
+- **Transaction flow in the guest:** read one `prova_common::Input` (context, deploy, calldata, storage) → call the entry point → at `__sys_return`/`__sys_revert` commit one `prova_common::Public` (inputs + reverted, output, storage_after; on revert storage_after = storage_before). Storage is a `static mut BTreeMap`.
+- **Shared types:** `common/` (`prova-common`, `no_std` + serde) defines `Input`, `Context`, `Public`; both guest and host depend on it by path, so the input/public-values format has one definition. The host's `prove` path forges a copy by flipping `reverted` to demonstrate verification rejects tampering.
+- **Context:** `--from/--value/--to/--block/--timestamp` before the steps set defaults; at the start of a step string they apply to that step (also in test files). Unauthenticated: only made public.
 - **Host:** `host/src/script.rs` parses and checks test scripts. The host parses steps, computes selectors with `tiny-keccak`, runs each step via `CpuProver::execute` starting from the previous step's `storage_after`, and prints guest stdout (the `sload`/`sstore`/`return` trace lines come from the guest's `println!`). Proving uses `.core()` on the CPU prover; swap to `.cuda()`/`.network()` in `host/src/main.rs` if needed.
 
 ## Gotchas
@@ -47,6 +48,6 @@ contracts/*.sol --solang--> build/contract.o --link--> guest --SP1--> public val
 - Proving needs a lot of RAM (did not finish on 14 GB). Execution (`run`) is cheap after the first `sp1-sdk` build.
 - Re-run `./prova setup` after switching Solang branches: the r55 branch builds `target/riscv` with different flags and `make` won't notice.
 - The guest's `tiny-keccak` is patched to SP1's fork (`guest/Cargo.toml`), which runs the keccak precompile; `tests/mappings.test` checks `KECCAK_PERMUTE` counts.
-- Unsupported Solidity features (Solang panics with `unimplemented`): storage arrays, `string`/`bytes`, dynamic arrays, events, `msg.sender`, external calls.
+- Unsupported Solidity features (Solang panics with `unimplemented`): storage arrays, `string`/`bytes`, dynamic arrays, events, external calls.
 - Known deviations from solc: calldata longer than the arguments reverts with `Panic(0)`; `type(intN).min / -1` reverts even in `unchecked`. RISC-V never traps on arithmetic, so every check wasm gets "for free" from a trap must be emitted explicitly (see log 003).
 - Starting storage is host-supplied and only made public, not proven to be real chain state.

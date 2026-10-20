@@ -13,7 +13,8 @@
 //!
 //! A step must succeed unless it is followed by `reverts`.
 
-use crate::{hex, parse_step, parse_word, short, Public, Step, Word};
+use crate::{default_context, hex, parse_step, parse_word, short, Step};
+use prova_common::{Public, Word};
 
 pub struct Case {
     pub line: usize,
@@ -48,7 +49,7 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
             }
             cases.push(Case {
                 line,
-                step: parse_step(content).map_err(at)?,
+                step: parse_step(content, &default_context()).map_err(at)?,
                 reverts: false,
                 expect: Vec::new(),
             });

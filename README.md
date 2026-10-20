@@ -59,7 +59,8 @@ The `sload`/`sstore`/`return` lines are the contract calling into the guest.
 | `./prova inspect` | Prints the object's symbols and instruction set, and writes its disassembly to `build/contract.s`. |
 | `./prova clean` | Removes `build/`. |
 
-A step is one quoted transaction:
+A step is one quoted transaction, optionally starting with context options
+(see [Transaction context](#transaction-context)):
 
 - `'deploy ARG...'` runs the constructor; the args are the constructor arguments.
 - `'SIGNATURE ARG...'` calls a function, e.g. `'inc(uint32) 5'` or `'get()'`.
@@ -70,6 +71,27 @@ Each `ARG` is a single 32-byte ABI word: `42`, `-1`, `true`, `false` or
 `0xHEX`. Hex is right-aligned like a number, so for `bytesN` arguments write
 the full word: `bytes4 0xcafebabe` is
 `0xcafebabe00000000000000000000000000000000000000000000000000000000`.
+
+## Transaction context
+
+`msg.sender`, `msg.value`, `address(this)`, `block.number` and
+`block.timestamp` come from the host:
+
+| Option | Sets | Default |
+|---|---|---|
+| `--from ADDRESS` | `msg.sender` | `0x1` |
+| `--value N` | `msg.value` | `0` |
+| `--to ADDRESS` | `address(this)` | `0xc0de` |
+| `--block N` | `block.number` | `1` |
+| `--timestamp N` | `block.timestamp` | `1` |
+
+Before the steps, an option is the default for every step:
+`./prova run --from 0xa11ce deploy 'whoami()'`. Inside a step, it is for that
+step only: `'--from 0xb0b transfer(address,uint256) 0xa11ce 5'`.
+
+The context is **not authenticated**: there is no signature and no chain.
+The proof makes it public, so a verifier sees which sender a result is for,
+but nothing proves that sender sent it.
 
 ## Tests
 
@@ -110,6 +132,8 @@ revert semantics, input and public values) is in [docs/spec.md](docs/spec.md).
 T solang_deploy, solang_call      the contract's entry points (ptr, len)
 U __sys_sload, __sys_sstore       storage, a slot and a value as 4×u64 limbs each
 U __sys_keccak256                 keccak256, for hashing and mapping slots
+U __sys_caller, __sys_callvalue,  the transaction context
+  __sys_address, __sys_block_number, __sys_timestamp
 U __sys_return, __sys_revert      end of the transaction
 ```
 
@@ -121,10 +145,11 @@ syscalls; they're plain function calls into Rust, which keeps storage in a
 
 One SP1 run is one transaction:
 
-1. Read `(deploy, calldata, storage)` from the host and commit them.
+1. Read `(context, deploy, calldata, storage)` from the host.
 2. Call `solang_deploy` or `solang_call`.
-3. On `__sys_return`, commit `(false, output, storage)`. On `__sys_revert`,
-   commit `(true, output, storage before)`. Then halt.
+3. On `__sys_return` or `__sys_revert`, commit the inputs together with
+   `(reverted, output, storage after)`; after a revert, storage after is the
+   storage before. Then halt.
 
 The committed bytes are the public values. A proof says "this guest, with this
 contract linked in, produced these public values". Changing any of them makes
@@ -140,6 +165,7 @@ The host supplies it, and the proof only makes it public.
 prova           the script
 contracts/      example contracts
 tests/          test scripts for ./prova test
+common/         the input and public values types, shared by guest and host
 guest/          the SP1 program; links build/contract.o
 host/           runs the guest: execute, or prove and verify
 build/          compiler output (git-ignored)
@@ -158,7 +184,7 @@ docs/review.md  a longer walkthrough of the Solang side and the design
 - **One contract at a time.** `build/contract.o` is linked into the guest, so
   compiling another contract rebuilds the guest.
 - **What's not supported yet:** storage arrays, `string`/`bytes`,
-  dynamic arrays, events, `msg.sender`, external calls. Using them makes
+  dynamic arrays, events, external calls. Using them makes
   Solang panic with `unimplemented`.
 - **Known deviations from solc:** trailing calldata reverts, and
   `min / -1` reverts even in `unchecked`. See `docs/spec.md`.

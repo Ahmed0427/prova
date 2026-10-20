@@ -600,9 +600,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "prova-common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "prova-guest"
 version = "0.1.0"
 dependencies = [
+ "prova-common",
  "sp1-zkvm",
  "tiny-keccak",
 ]

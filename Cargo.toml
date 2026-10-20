@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["host"]
+members = ["host", "common"]
 exclude = ["guest"]

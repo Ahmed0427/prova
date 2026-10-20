@@ -1,3 +1,4 @@
+use prova_common::{Address, Context, Input, Public, Storage, Word};
 use sp1_sdk::blocking::{CpuProver, ProveRequest, Prover, ProverClient};
 use sp1_sdk::{include_elf, Elf, HashableKey, ProvingKey, SP1PublicValues, SP1Stdin};
 use std::process::exit;
@@ -8,66 +9,98 @@ mod script;
 
 const ELF: Elf = include_elf!("prova-guest");
 
-type Word = [u8; 32];
-type Storage = Vec<(Word, Word)>;
-
-const USAGE: &str = "usage: prova-host [--prove] STEP...
+const USAGE: &str = "usage: prova-host [--prove] [OPTION VALUE]... STEP...
        prova-host --test FILE
 
 each STEP is one transaction, run on the storage the previous one left:
   'deploy ARG...'          run the constructor
   'SIGNATURE ARG...'       call a function, e.g. 'inc(uint32) 5' or 'get()'
+  '--from 0xa SIGNATURE ARG...'   with context options for this step only
 
 each ARG is one 32-byte ABI word: 42, -1, true, false or 0xHEX (right-aligned).
+
+context options (before the steps: the default for every step; inside one:
+for that step), unauthenticated, only made public:
+  --from ADDRESS        msg.sender       (default 0x1)
+  --value N             msg.value        (default 0)
+  --to ADDRESS          address(this)    (default 0xc0de)
+  --block N             block.number     (default 1)
+  --timestamp N         block.timestamp  (default 1)
+
 with --prove, the last step is proven and verified instead of executed.
 with --test, the steps and their expected results come from FILE.";
 
 struct Step {
     label: String,
+    context: Context,
     deploy: bool,
     calldata: Vec<u8>,
 }
 
-#[derive(Clone)]
-struct Public {
-    deploy: bool,
-    calldata: Vec<u8>,
-    storage_before: Storage,
-    reverted: bool,
-    output: Vec<u8>,
-    storage_after: Storage,
+fn default_context() -> Context {
+    Context {
+        caller: address_from(1),
+        value: [0; 32],
+        address: address_from(0xc0de),
+        block_number: 1,
+        timestamp: 1,
+    }
 }
 
-impl Public {
-    fn read(values: &SP1PublicValues) -> Self {
-        let mut values = values.clone();
-        Public {
-            deploy: values.read(),
-            calldata: values.read(),
-            storage_before: values.read(),
-            reverted: values.read(),
-            output: values.read(),
-            storage_after: values.read(),
-        }
-    }
+fn address_from(n: u64) -> Address {
+    let mut address = [0; 20];
+    address[12..].copy_from_slice(&n.to_be_bytes());
+    address
+}
 
-    fn write(&self) -> SP1PublicValues {
-        let mut values = SP1PublicValues::new();
-        values.write(&self.deploy);
-        values.write(&self.calldata);
-        values.write(&self.storage_before);
-        values.write(&self.reverted);
-        values.write(&self.output);
-        values.write(&self.storage_after);
-        values
+/// Applies one context option; false if `name` isn't one.
+fn set_option(context: &mut Context, name: &str, value: &str) -> Result<bool, String> {
+    match name {
+        "--from" => context.caller = parse_address(value)?,
+        "--value" => context.value = parse_word(value)?,
+        "--to" => context.address = parse_address(value)?,
+        "--block" => context.block_number = parse_u64(value)?,
+        "--timestamp" => context.timestamp = parse_u64(value)?,
+        _ => return Ok(false),
     }
+    Ok(true)
+}
 
-    fn print(&self) {
-        println!("  storage before  {}", show_storage(&self.storage_before));
-        println!("  reverted        {}", self.reverted);
-        println!("  output          0x{}", hex(&self.output));
-        println!("  storage after   {}", show_storage(&self.storage_after));
+fn parse_u64(arg: &str) -> Result<u64, String> {
+    arg.parse()
+        .map_err(|_| format!("`{arg}` is not a 64-bit number"))
+}
+
+fn parse_address(arg: &str) -> Result<Address, String> {
+    let word = parse_word(arg)?;
+    if word[..12].iter().any(|b| *b != 0) {
+        return Err(format!("`{arg}` is wider than an address"));
     }
+    Ok(word[12..].try_into().unwrap())
+}
+
+fn print_public(public: &Public, defaults: &Context) {
+    let context = &public.context;
+    if context != defaults {
+        println!(
+            "  context         from {} value {} to {} block {} timestamp {}",
+            short_address(&context.caller),
+            short(&context.value),
+            short_address(&context.address),
+            context.block_number,
+            context.timestamp
+        );
+    }
+    println!("  storage before  {}", show_storage(&public.storage_before));
+    println!("  reverted        {}", public.reverted);
+    println!("  output          0x{}", hex(&public.output));
+    println!("  storage after   {}", show_storage(&public.storage_after));
+}
+
+fn short_address(address: &Address) -> String {
+    let mut word = [0; 32];
+    word[12..].copy_from_slice(address);
+    short(&word)
 }
 
 fn fail(message: &str) -> ! {
@@ -75,9 +108,19 @@ fn fail(message: &str) -> ! {
     exit(2)
 }
 
-fn parse_step(text: &str) -> Result<Step, String> {
+fn parse_step(text: &str, defaults: &Context) -> Result<Step, String> {
     let mut parts = text.split_whitespace();
-    let head = parts.next().ok_or("empty step")?;
+    let mut context = defaults.clone();
+    let head = loop {
+        let head = parts.next().ok_or("empty step")?;
+        if !head.starts_with("--") {
+            break head;
+        }
+        let value = parts.next().ok_or(format!("`{head}` needs a value"))?;
+        if !set_option(&mut context, head, value)? {
+            return Err(format!("unknown option `{head}`"));
+        }
+    };
     let deploy = head == "deploy";
 
     let mut calldata = if deploy {
@@ -94,6 +137,7 @@ fn parse_step(text: &str) -> Result<Step, String> {
 
     Ok(Step {
         label: text.trim().to_string(),
+        context,
         deploy,
         calldata,
     })
@@ -134,10 +178,23 @@ fn selector(signature: &str) -> [u8; 4] {
 
 fn stdin(step: &Step, storage: &Storage) -> SP1Stdin {
     let mut stdin = SP1Stdin::new();
-    stdin.write(&step.deploy);
-    stdin.write(&step.calldata);
-    stdin.write(storage);
+    stdin.write(&Input {
+        context: step.context.clone(),
+        deploy: step.deploy,
+        calldata: step.calldata.clone(),
+        storage: storage.clone(),
+    });
     stdin
+}
+
+fn read_public(values: &SP1PublicValues) -> Public {
+    values.clone().read()
+}
+
+fn write_public(public: &Public) -> SP1PublicValues {
+    let mut values = SP1PublicValues::new();
+    values.write(public);
+    values
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -183,7 +240,7 @@ fn run(prover: &CpuProver, step: &Step, storage: &Storage) -> Run {
         .filter(|(name, count)| *count > 0 && !IO_SYSCALLS.contains(&name.as_str()))
         .collect();
     Run {
-        public: Public::read(&values),
+        public: read_public(&values),
         trace,
         cycles: report.total_instruction_count(),
         syscalls,
@@ -210,7 +267,7 @@ fn execute(prover: &CpuProver, step: &Step, storage: &Storage) -> Public {
     if !run.syscalls.is_empty() {
         println!("  precompiles     {}", show_syscalls(&run.syscalls));
     }
-    run.public.print();
+    print_public(&run.public, &default_context());
     run.public
 }
 
@@ -239,7 +296,7 @@ fn test(prover: &CpuProver, path: &str) -> bool {
             println!("  calldata        0x{}", hex(&case.step.calldata));
             print!("{}", run.trace);
             println!("  precompiles     {}", show_syscalls(&run.syscalls));
-            run.public.print();
+            print_public(&run.public, &default_context());
         }
         storage = run.public.storage_after;
     }
@@ -275,8 +332,8 @@ fn prove(prover: &CpuProver, step: &Step, storage: &Storage) {
         proof.bytes().len()
     );
 
-    let public = Public::read(&proof.public_values);
-    public.print();
+    let public = read_public(&proof.public_values);
+    print_public(&public, &default_context());
 
     let verified = prover.verify(&proof, pk.verifying_key(), None);
     println!(
@@ -288,7 +345,7 @@ fn prove(prover: &CpuProver, step: &Step, storage: &Storage) {
         reverted: !public.reverted,
         ..public
     };
-    proof.public_values = forged.write();
+    proof.public_values = write_public(&forged);
     let forged_verified = prover.verify(&proof, pk.verifying_key(), None);
     println!(
         "  verify(proof, reverted flipped)    {}",
@@ -325,11 +382,24 @@ fn main() {
     }
 
     let prove_last = args.iter().any(|arg| arg == "--prove");
-    let steps: Vec<Step> = args
-        .iter()
-        .filter(|arg| *arg != "--prove")
-        .map(|arg| parse_step(arg).unwrap_or_else(|err| fail(&err)))
-        .collect();
+    let mut defaults = default_context();
+    let mut steps = Vec::new();
+    let mut args = args.iter().filter(|arg| *arg != "--prove");
+    while let Some(arg) = args.next() {
+        // A step can start with options too, but it is one quoted argument.
+        if arg.starts_with("--") && !arg.contains(char::is_whitespace) {
+            let value = args
+                .next()
+                .unwrap_or_else(|| fail(&format!("`{arg}` needs a value")));
+            match set_option(&mut defaults, arg, value) {
+                Ok(true) => {}
+                Ok(false) => fail(&format!("unknown option `{arg}`")),
+                Err(err) => fail(&err),
+            }
+        } else {
+            steps.push(parse_step(arg, &defaults).unwrap_or_else(|err| fail(&err)));
+        }
+    }
     if steps.is_empty() {
         fail("no steps given");
     }

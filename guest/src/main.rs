@@ -2,14 +2,13 @@
 #![allow(static_mut_refs)]
 sp1_zkvm::entrypoint!(main);
 
+use prova_common::{Address, Input, Public, Word};
 use sp1_zkvm::io::{commit, read};
 use std::collections::BTreeMap;
 use tiny_keccak::{Hasher, Keccak};
 
-type Word = [u8; 32];
-
 static mut STORAGE: BTreeMap<Word, Word> = BTreeMap::new();
-static mut BEFORE: Vec<(Word, Word)> = Vec::new();
+static mut INPUT: Option<Input> = None;
 
 extern "C" {
     fn solang_deploy(input: *const u8, len: u32);
@@ -17,23 +16,20 @@ extern "C" {
 }
 
 pub fn main() {
-    let deploy: bool = read();
-    let calldata: Vec<u8> = read();
-    let storage: Vec<(Word, Word)> = read();
-
-    commit(&deploy);
-    commit(&calldata);
-    commit(&storage);
+    let input: Input = read();
 
     unsafe {
-        STORAGE = storage.iter().copied().collect();
-        BEFORE = storage;
-
-        let entry = if deploy { solang_deploy } else { solang_call };
-        entry(calldata.as_ptr(), calldata.len() as u32);
+        STORAGE = input.storage.iter().copied().collect();
+        let entry = if input.deploy { solang_deploy } else { solang_call };
+        let input = INPUT.insert(input);
+        entry(input.calldata.as_ptr(), input.calldata.len() as u32);
     }
 
     unreachable!("contracts end with __sys_return or __sys_revert");
+}
+
+fn input() -> &'static Input {
+    unsafe { INPUT.as_ref().unwrap() }
 }
 
 // Solang passes 256-bit values as four u64 limbs, least significant first.
@@ -76,6 +72,31 @@ extern "C" fn __sys_keccak256(data: *const u8, len: u64, out: *mut [u8; 32]) {
 }
 
 #[no_mangle]
+extern "C" fn __sys_caller(out: *mut Address) {
+    unsafe { *out = input().context.caller };
+}
+
+#[no_mangle]
+extern "C" fn __sys_callvalue(out: *mut [u64; 4]) {
+    unsafe { *out = to_limbs(&input().context.value) };
+}
+
+#[no_mangle]
+extern "C" fn __sys_address(out: *mut Address) {
+    unsafe { *out = input().context.address };
+}
+
+#[no_mangle]
+extern "C" fn __sys_block_number() -> u64 {
+    input().context.block_number
+}
+
+#[no_mangle]
+extern "C" fn __sys_timestamp() -> u64 {
+    input().context.timestamp
+}
+
+#[no_mangle]
 extern "C" fn __sys_return(data: *const u8, len: u64) -> ! {
     let storage = unsafe { STORAGE.iter().map(|(k, v)| (*k, *v)).collect() };
     finish(false, data, len, storage)
@@ -84,7 +105,7 @@ extern "C" fn __sys_return(data: *const u8, len: u64) -> ! {
 // A revert undoes every storage write.
 #[no_mangle]
 extern "C" fn __sys_revert(data: *const u8, len: u64) -> ! {
-    finish(true, data, len, unsafe { BEFORE.clone() })
+    finish(true, data, len, input().storage.clone())
 }
 
 /// The contract's bytes; `data` may be null when `len` is 0.
@@ -96,17 +117,24 @@ fn bytes<'a>(data: *const u8, len: u64) -> &'a [u8] {
     }
 }
 
-fn finish(reverted: bool, data: *const u8, len: u64, storage: Vec<(Word, Word)>) -> ! {
-    let data = bytes(data, len).to_vec();
-
+fn finish(reverted: bool, data: *const u8, len: u64, storage_after: Vec<(Word, Word)>) -> ! {
+    let output = bytes(data, len).to_vec();
     println!(
         "  {} 0x{}",
         if reverted { "revert" } else { "return" },
-        bytes_hex(&data)
+        bytes_hex(&output)
     );
-    commit(&reverted);
-    commit(&data);
-    commit(&storage);
+
+    let input = unsafe { INPUT.take().unwrap() };
+    commit(&Public {
+        context: input.context,
+        deploy: input.deploy,
+        calldata: input.calldata,
+        storage_before: input.storage,
+        reverted,
+        output,
+        storage_after,
+    });
 
     sp1_zkvm::syscalls::syscall_halt(0)
 }

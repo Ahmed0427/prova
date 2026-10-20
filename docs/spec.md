@@ -11,7 +11,7 @@ Status tags: **implemented** (the compiler emits it and the SP1 guest
 provides it), **planned** (proposed here; the signature is final only once
 its log entry in `docs/log/` lands and the tag changes).
 
-Interface version: **1** (adds `__sys_keccak256`, log 004).
+Interface version: **2** (adds the context imports, log 005).
 
 ## 1. Object file
 
@@ -143,7 +143,29 @@ guest uses SP1's patched `tiny-keccak`, so each 136-byte block is one
 `KECCAK_PERMUTE` precompile call. Calls whose input is constant at compile
 time (e.g. `keccak256("abc")`) are folded and never reach the runtime.
 
-### 3.4 End of execution — implemented
+### 3.4 Transaction context — implemented
+
+```c
+void     __sys_caller      (uint8_t  out[20]);   // msg.sender
+void     __sys_callvalue   (uint64_t out[4]);    // msg.value, as limbs
+void     __sys_address     (uint8_t  out[20]);   // address(this)
+uint64_t __sys_block_number(void);               // block.number
+uint64_t __sys_timestamp   (void);               // block.timestamp, seconds
+```
+
+Addresses are 20 bytes, big-endian; `out` has no alignment requirement
+for the addresses and 8-byte alignment for the limbs. Every entry point of
+a function that is not `payable` (and the constructor unless it is
+`payable`, including the implicit one) calls `__sys_callvalue` first and
+reverts with empty data if the value is not 0, as solc does. No value is
+moved: there are no balances yet, `msg.value` is only a number.
+
+In the SP1 guest the context comes from the host (§4) and is
+**unauthenticated**: no signature or chain proves the sender, block or
+timestamp. The proof only makes them public (§5), so a verifier knows which
+sender the result is for, but must trust whoever chose it.
+
+### 3.5 End of execution — implemented
 
 ```c
 _Noreturn void __sys_return(const uint8_t *data, uint64_t len);
@@ -174,7 +196,7 @@ ends the transaction. With nested calls (planned, phase 2) `__sys_revert`
 ends only the current call frame: it discards that frame's writes and
 returns failure to the caller; only a top-level revert ends the transaction.
 
-### 3.5 Planned imports
+### 3.6 Planned imports
 
 Proposed signatures. Each will be settled, with the options considered, in
 its log entry.
@@ -182,58 +204,62 @@ its log entry.
 | Import | Proposed signature | Solidity | Phase |
 |---|---|---|---|
 | `__sys_log` | `void (const uint8_t *data, uint64_t len, const uint8_t *topics, uint64_t n_topics)` — `topics` is `n_topics × 32` big-endian bytes, `n_topics ≤ 4` | `emit E(...)` | 1 |
-| `__sys_caller` | `void (uint8_t out[20])` | `msg.sender` | 1 |
-| `__sys_callvalue` | `void (uint64_t out[4])` | `msg.value` | 1 |
-| `__sys_address` | `void (uint8_t out[20])` | `address(this)` | 1 |
-| `__sys_block_number` | `uint64_t (void)` | `block.number` | 1 |
-| `__sys_timestamp` | `uint64_t (void)` | `block.timestamp` | 1 |
 | `__sys_call` | `uint64_t (const uint8_t addr[20], const uint64_t value[4], const uint8_t *input, uint64_t len)` → 0 success, 1 revert | external calls | 2 |
 | `__sys_returndata_size` / `__sys_returndata_copy` | `uint64_t (void)` / `void (uint8_t *dest, uint64_t offset, uint64_t len)` | return data of the last call | 2 |
 
-`__sys_caller` and `__sys_callvalue` are already *declared* in the compiler
-with these signatures, but nothing calls them, so they do not appear in the
-object. `msg.value` is currently compiled as the constant 0 (used for the
-non-payable check), and `msg.sender` does not compile.
-
 ## 4. SP1 guest input — implemented
 
-The host writes three values with `SP1Stdin::write`; the guest reads them
-with `sp1_zkvm::io::read`, in this order. Each is bincode (v1, default
-options: lengths as `u64` LE, `bool` as one byte, `[u8; N]` without a
-length).
+The host writes one `prova_common::Input` with `SP1Stdin::write`; the guest
+reads it with `sp1_zkvm::io::read`. `common/src/lib.rs` is the definition
+for both sides. Encoding: bincode v1, default options (integers
+little-endian, `Vec` as a `u64` length then the items, `bool` one byte,
+`[u8; N]` without a length, struct fields in order, no tags).
 
-| # | Field | Rust type | Meaning |
-|---|---|---|---|
-| 1 | `deploy` | `bool` | call `solang_deploy` (true) or `solang_call` |
-| 2 | `calldata` | `Vec<u8>` | the entry point's input |
-| 3 | `storage` | `Vec<([u8; 32], [u8; 32])>` | starting storage, `(slot, value)` big-endian; any order, a repeated slot keeps its last value |
+```rust
+struct Input {
+    context: Context,
+    deploy: bool,              // solang_deploy (true) or solang_call
+    calldata: Vec<u8>,         // the entry point's input
+    storage: Vec<(Word, Word)>,// starting storage, (slot, value) big-endian; any order
+}
+struct Context {
+    caller: [u8; 20],          // msg.sender
+    value: [u8; 32],           // msg.value, big-endian
+    address: [u8; 20],         // address(this)
+    block_number: u64,
+    timestamp: u64,
+}
+```
 
-Planned (phase 1): a transaction context (sender, value, contract address,
-block number, timestamp) supplied by the host. It will be **unauthenticated**:
-the proof will make it public but not prove it.
+Host defaults (`./prova run`, tests): caller `0x1`, value 0, address
+`0xc0de`, block 1, timestamp 1; `--from`, `--value`, `--to`, `--block`,
+`--timestamp` change them.
 
 ## 5. SP1 public values — implemented
 
-The guest `commit`s six values, bincode as above, in this order. The host's
-`Public::read`/`Public::write` must match it exactly.
+The guest commits exactly one `prova_common::Public`, bincode as above, and
+then calls `syscall_halt(0)`.
 
-| # | Field | Rust type | Committed |
-|---|---|---|---|
-| 1 | `deploy` | `bool` | before execution |
-| 2 | `calldata` | `Vec<u8>` | before execution |
-| 3 | `storage_before` | `Vec<(Word, Word)>` | before execution |
-| 4 | `reverted` | `bool` | at `__sys_return`/`__sys_revert` |
-| 5 | `output` | `Vec<u8>` | return or revert data |
-| 6 | `storage_after` | `Vec<(Word, Word)>` | the final map, sorted by slot; equal to `storage_before` on revert |
+```rust
+struct Public {
+    context: Context,              // as given
+    deploy: bool,                  // as given
+    calldata: Vec<u8>,             // as given
+    storage_before: Vec<(Word, Word)>, // as given
+    reverted: bool,
+    output: Vec<u8>,               // return or revert data
+    storage_after: Vec<(Word, Word)>,  // the final map, sorted by slot; = storage_before on revert
+}
+```
 
-Then the guest calls `syscall_halt(0)`. A proof attests: this program (guest
-+ linked contract, fixed by the verifying key) run on input
-`(deploy, calldata, storage_before)` produced `(reverted, output,
-storage_after)`. It does **not** attest that `storage_before` is real chain
-state.
+A proof attests: this program (guest + linked contract, fixed by the
+verifying key) run on input `(context, deploy, calldata, storage_before)`
+produced `(reverted, output, storage_after)`. It does **not** attest that
+`storage_before` is real chain state or that `context` is a real
+transaction.
 
-Planned (phase 1): the transaction context and the logs (or their hash).
-Planned later: hashes or state roots in place of full storage.
+Planned (phase 1): the logs, or their hash. Planned later: hashes or state
+roots in place of full storage.
 
 ## 6. Planned compiler-side semantics
 

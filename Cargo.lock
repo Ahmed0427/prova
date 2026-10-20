@@ -2709,9 +2709,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "prova-common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "prova-host"
 version = "0.1.0"
 dependencies = [
+ "prova-common",
  "sp1-build",
  "sp1-sdk",
  "tiny-keccak",
