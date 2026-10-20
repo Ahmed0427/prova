@@ -1,0 +1,93 @@
+# A plain ERC-20: deploy, transfers, balances, allowances, events, reverts.
+# Storage has solc's layout: totalSupply at slot 0, balanceOf at
+# keccak(pad(owner) ++ 1), allowance at keccak(pad(spender) ++ keccak(pad(owner) ++ 2)).
+contract contracts/erc20.sol
+
+--from 0xa11ce deploy 1000
+    log Transfer(address,address,uint256) 0 0xa11ce data 1000
+    storage 0x0 = 1000
+    storage 0x6203dd68657862fa26bd7c4a12a3a2b3bbf2220be739d51860c5d12e036c38ec = 1000
+
+name()
+    returns "Prova Token"
+symbol()
+    returns "PRV"
+decimals()
+    returns 18
+totalSupply()
+    returns 1000
+
+--from 0xa11ce transfer(address,uint256) 0xb0b 300
+    returns true
+    log Transfer(address,address,uint256) 0xa11ce 0xb0b data 300
+    storage 0x6203dd68657862fa26bd7c4a12a3a2b3bbf2220be739d51860c5d12e036c38ec = 700
+    storage 0x89d389afd974c1027fb0142f999a77333c2f0557f3c8ddf9672539b882e1f72c = 300
+balanceOf(address) 0xa11ce
+    returns 700
+balanceOf(address) 0xb0b
+    returns 300
+balanceOf(address) 0xca7
+    returns 0
+
+# Too little balance: reverts with the message, no event, balances unchanged.
+--from 0xb0b transfer(address,uint256) 0xca7 301
+    error "ERC20: transfer amount exceeds balance"
+    logs 0
+    storage 0x89d389afd974c1027fb0142f999a77333c2f0557f3c8ddf9672539b882e1f72c = 300
+    storage 0x1bf4f545afe762767e978f44a657760ab2e4f72aa18f3d7c627f68300ddedf72 = 0
+# Exactly the balance is fine.
+--from 0xb0b transfer(address,uint256) 0xca7 300
+    returns true
+    log Transfer(address,address,uint256) 0xb0b 0xca7 data 300
+balanceOf(address) 0xb0b
+    returns 0
+balanceOf(address) 0xca7
+    returns 300
+# A transfer to yourself keeps the balance.
+--from 0xca7 transfer(address,uint256) 0xca7 100
+    returns true
+    log Transfer(address,address,uint256) 0xca7 0xca7 data 100
+balanceOf(address) 0xca7
+    returns 300
+--from 0xa11ce transfer(address,uint256) 0 1
+    error "ERC20: transfer to the zero address"
+# A function that is not payable rejects value.
+--from 0xa11ce --value 1 transfer(address,uint256) 0xb0b 1
+    reverts
+    output 0x
+
+# Allowances.
+--from 0xa11ce approve(address,uint256) 0xb0b 50
+    returns true
+    log Approval(address,address,uint256) 0xa11ce 0xb0b data 50
+    storage 0x0d5632915d9b9e36bd9ceca2aa05e7f45636146de5951b7745a5680b60c587a2 = 50
+allowance(address,address) 0xa11ce 0xb0b
+    returns 50
+--from 0xb0b transferFrom(address,address,uint256) 0xa11ce 0xca7 20
+    returns true
+    log Transfer(address,address,uint256) 0xa11ce 0xca7 data 20
+allowance(address,address) 0xa11ce 0xb0b
+    returns 30
+--from 0xb0b transferFrom(address,address,uint256) 0xa11ce 0xca7 31
+    error "ERC20: insufficient allowance"
+--from 0xca7 transferFrom(address,address,uint256) 0xa11ce 0xca7 1
+    error "ERC20: insufficient allowance"
+# An infinite allowance is not spent.
+--from 0xa11ce approve(address,uint256) 0xb0b 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    returns true
+--from 0xb0b transferFrom(address,address,uint256) 0xa11ce 0xb0b 80
+    returns true
+allowance(address,address) 0xa11ce 0xb0b
+    returns 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+--from 0xa11ce approve(address,uint256) 0 1
+    error "ERC20: approve to the zero address"
+
+# 1000 = 600 (a11ce) + 80 (b0b) + 320 (ca7)
+balanceOf(address) 0xa11ce
+    returns 600
+balanceOf(address) 0xb0b
+    returns 80
+balanceOf(address) 0xca7
+    returns 320
+totalSupply()
+    returns 1000

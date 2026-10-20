@@ -90,6 +90,14 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
                     .map_err(|err| at(err.to_string()))?;
                 case.expect.push(Expect::Output(output));
             }
+            // `error "message"`: reverts with Error(string).
+            "error" => {
+                let values = crate::abi::parse_values(words).map_err(at)?;
+                let mut output = vec![0x08, 0xc3, 0x79, 0xa0];
+                output.extend_from_slice(&crate::abi::encode(&values));
+                case.reverts = true;
+                case.expect.push(Expect::Output(output));
+            }
             "storage" => {
                 let rest: Vec<&str> = words.collect();
                 let [slot, "=", value] = rest[..] else {

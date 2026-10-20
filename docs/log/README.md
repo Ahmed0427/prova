@@ -13,3 +13,4 @@ the real diff, verification, commits, and open issues.
 | [005](005-transaction-context.md) | `msg.sender`/`msg.value`/`address(this)`/block info from a host-supplied context; non-payable check; shared `prova-common` types | 1 |
 | [006](006-events.md) | Ethereum-style events through `__sys_log`; logs in the public values | 1 |
 | [007](007-dynamic-abi.md) | `string`/`bytes` in the Ethereum ABI, `Error(string)`, solc-style calldata checks | 1 |
+| [008](008-erc20.md) | `contracts/erc20.sol` and its test; `error "msg"` expectation | 1 |

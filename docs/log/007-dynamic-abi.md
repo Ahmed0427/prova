@@ -240,7 +240,7 @@ diagnostic).
 ## 6. Commits
 
 - Solang: `b9856c6b encode string and bytes in the ethereum abi with selectors kept raw`
-- prova: filled in by the next commit.
+- prova: `c107412 test string and bytes abi, Error(string) and malformed calldata`
 
 ## 7. Open issues / follow-ups
 

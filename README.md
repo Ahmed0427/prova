@@ -21,6 +21,20 @@ contracts/foo.sol ──solang──► build/contract.o ──link──► gue
 - A system LLVM with the RISC-V backend (`llc`, `llvm-objdump`). Solang's own
   LLVM can't emit RISC-V code, so it calls the system `llc`.
 
+## Example: an ERC-20
+
+`contracts/erc20.sol` is a plain EIP-20 token (the same source compiles with
+solc 0.8). `tests/erc20.test` deploys it, transfers, checks balances,
+allowances, events and storage slots, and checks that a transfer with too
+little balance reverts:
+
+```bash
+./prova compile contracts/erc20.sol
+./prova run --from 0xa11ce 'deploy 1000' 'transfer(address,uint256) 0xb0b 300' \
+    'balanceOf(address) 0xb0b' '--from 0xb0b transfer(address,uint256) 0xca7 301'
+./prova test tests/erc20.test
+```
+
 ## Quick start
 
 ```bash
@@ -114,6 +128,7 @@ nope()
 | Expectation | Meaning |
 |---|---|
 | `reverts` | the step reverts (without it, the step must succeed) |
+| `error "message"` | the step reverts with `Error(string)` of this message (`require(cond, "message")`) |
 | `returns VALUE...` | the output is exactly the ABI encoding of these values (words, `"text"`, `hex"..."`; none: empty) |
 | `output 0xHEX` | the output is exactly these bytes |
 | `storage SLOT = VALUE` | after the step; `0` also matches a slot never written |
