@@ -20,3 +20,4 @@ the real diff, verification, commits, and open issues.
 | [012](012-benchmark-harness.md) | `./prova bench`: revm guest with the same steps, cycle regions, trace switch, differential findings | 3 |
 | [013](013-sha2-precompile.md) | both guests hash the public values with the SHA-256 precompiles (patched `sha2`) | 3 |
 | [014](014-benchmark-results.md) | `docs/benchmarks.md`: ERC-20, compute and calls, native vs revm, how to reproduce, caveats | 3 |
+| [015](015-design-legacy-evm-and-gas.md) | design note: native ↔ legacy EVM calls in one proof, and gas metering | 4 |
