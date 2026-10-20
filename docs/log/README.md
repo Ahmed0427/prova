@@ -17,3 +17,4 @@ the real diff, verification, commits, and open issues.
 | [009](009-several-contracts.md) | several contracts in one guest: renamed entry points, weak helpers, address → contract registry, per-account state | 2 |
 | [010](010-nested-calls.md) | calls between contracts: `__sys_call` family, per-frame journal, setjmp-style unwinding, re-entrant heap, try/catch | 2 |
 | [011](011-abi-length-panic.md) | oversized dynamic ABI length reverts with `Panic(0x41)`, found by comparing with revm | 3 |
+| [012](012-benchmark-harness.md) | `./prova bench`: revm guest with the same steps, cycle regions, trace switch, differential findings | 3 |

@@ -53,6 +53,25 @@ pub struct Input {
     pub calldata: Vec<u8>,
     /// The state the transaction starts from.
     pub state: State,
+    /// Print a line per `__sys_*` call. Off for benchmarks; not committed.
+    pub trace: bool,
+}
+
+/// The EVM guest's input (the benchmark's baseline): the same transaction,
+/// plus the solc bytecode for each contract name.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EvmInput {
+    pub input: Input,
+    pub codes: Vec<EvmCode>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EvmCode {
+    pub name: String,
+    /// Creation code; the constructor arguments are appended to it.
+    pub init: Vec<u8>,
+    /// Runtime code: what the account holds after the constructor.
+    pub runtime: Vec<u8>,
 }
 
 /// An event, as on Ethereum.
@@ -66,7 +85,7 @@ pub struct Log {
 }
 
 /// The guest's only commit: the public values a proof attests to.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Public {
     pub context: Context,
     pub deploy: Option<String>,

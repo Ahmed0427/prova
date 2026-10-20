@@ -6,12 +6,15 @@ use std::time::Instant;
 use tiny_keccak::{Hasher, Keccak};
 
 mod abi;
+mod bench;
 mod script;
 
 const ELF: Elf = include_elf!("prova-guest");
+const EVM_ELF: Elf = include_elf!("prova-evm-guest");
 
 const USAGE: &str = "usage: prova-host [--prove] [OPTION VALUE]... STEP...
        prova-host --test FILE
+       prova-host --bench FILE
 
 each STEP is one transaction, run on the state the previous one left:
   'deploy [NAME] ARG...'   deploy contract NAME at --to (NAME may be left out
@@ -19,7 +22,8 @@ each STEP is one transaction, run on the state the previous one left:
   'SIGNATURE ARG...'       call a function, e.g. 'inc(uint32) 5' or 'get()'
   '--from 0xa SIGNATURE ARG...'   with context options for this step only
 
-each ARG is one 32-byte ABI word: 42, -1, true, false or 0xHEX (right-aligned).
+each ARG is one 32-byte ABI word (42, -1, true, false or 0xHEX, right-aligned),
+a string \"text\" or bytes hex\"00ff\"; the args are ABI-encoded as a tuple.
 
 context options (before the steps: the default for every step; inside one:
 for that step), unauthenticated, only made public:
@@ -30,7 +34,9 @@ for that step), unauthenticated, only made public:
   --timestamp N         block.timestamp  (default 1)
 
 with --prove, the last step is proven and verified instead of executed.
-with --test, the steps and their expected results come from FILE.";
+with --test, the steps and their expected results come from FILE.
+with --bench, FILE's steps run natively and as solc bytecode in revm, and the
+cycles are compared.";
 
 struct Step {
     label: String,
@@ -217,14 +223,19 @@ fn keccak256(data: &[u8]) -> Word {
     hash
 }
 
-fn stdin(step: &Step, state: &State) -> SP1Stdin {
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&Input {
+fn input(step: &Step, state: &State, trace: bool) -> Input {
+    Input {
         context: step.context.clone(),
         deploy: step.deploy.clone(),
         calldata: step.calldata.clone(),
         state: state.clone(),
-    });
+        trace,
+    }
+}
+
+fn stdin(step: &Step, state: &State) -> SP1Stdin {
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&input(step, state, true));
     stdin
 }
 
@@ -281,12 +292,18 @@ struct Run {
     cycles: u64,
     /// The syscalls other than I/O and halt, by name: the precompiles used.
     syscalls: Vec<(String, u64)>,
+    /// Cycles of the regions the guests mark: setup, execute, commit.
+    regions: std::collections::HashMap<String, u64>,
 }
 
 fn run(prover: &CpuProver, step: &Step, state: &State) -> Run {
+    run_elf(prover, ELF, stdin(step, state))
+}
+
+fn run_elf(prover: &CpuProver, elf: Elf, stdin: SP1Stdin) -> Run {
     let (guest_stdout, log) = tokio::sync::watch::channel(String::new());
     let (values, report) = prover
-        .execute(ELF, stdin(step, state))
+        .execute(elf, stdin)
         .stdout(guest_stdout)
         .run()
         .unwrap_or_else(|err| fail(&format!("the guest failed: {err}")));
@@ -302,6 +319,11 @@ fn run(prover: &CpuProver, step: &Step, state: &State) -> Run {
         trace,
         cycles: report.total_instruction_count(),
         syscalls,
+        regions: report
+            .cycle_tracker
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect(),
     }
 }
 
@@ -437,6 +459,12 @@ fn main() {
             fail("--test takes one file");
         };
         exit(if test(&prover, path) { 0 } else { 1 });
+    }
+    if args.first().is_some_and(|arg| arg == "--bench") {
+        let [_, path] = &args[..] else {
+            fail("--bench takes one file");
+        };
+        exit(if bench::bench(&prover, path) { 0 } else { 1 });
     }
 
     let prove_last = args.iter().any(|arg| arg == "--prove");

@@ -3,3 +3,4 @@
 /build/
 *.o
 *.s
+/evm-guest/target/

@@ -17,8 +17,16 @@ fn main() {
         let object = build.join(format!("contracts/{name}.o"));
         println!("cargo:rustc-link-arg={}", object.display());
         println!("cargo:rerun-if-changed={}", object.display());
-        writeln!(externs, "    fn prova_deploy_{name}(input: *const u8, len: u32);").unwrap();
-        writeln!(externs, "    fn prova_call_{name}(input: *const u8, len: u32);").unwrap();
+        writeln!(
+            externs,
+            "    fn prova_deploy_{name}(input: *const u8, len: u32);"
+        )
+        .unwrap();
+        writeln!(
+            externs,
+            "    fn prova_call_{name}(input: *const u8, len: u32);"
+        )
+        .unwrap();
         writeln!(
             table,
             "    Code {{ name: {name:?}, deploy: prova_deploy_{name}, call: prova_call_{name} }},"

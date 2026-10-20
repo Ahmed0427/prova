@@ -16,7 +16,8 @@ Everything goes through the `./prova` bash script, which sets `PATH` (`~/.sp1/bi
 ./prova run 'deploy 5' 'inc(uint32) 5' 'get()'   # execute steps in SP1, storage carried between steps
 ./prova prove 'deploy 5' 'inc(uint32) 5'   # execute all but last, prove+verify the last, check a tampered copy is rejected
 ./prova test                               # run every tests/*.test script (or name some)
-./prova inspect                            # symbols, ISA, disassembly -> build/contract.s
+./prova bench tests/erc20.test             # same steps natively and as solc bytecode in revm: compare results and cycles
+./prova inspect                            # symbols, ISA, disassembly -> build/contracts/NAME.s
 ./prova clean                              # rm -rf build/
 ```
 
@@ -32,7 +33,8 @@ Change log: every logical change gets `docs/log/NNN-name.md` (sections: what and
 contracts/*.sol --solang--> build/contracts/*.o --link--> guest --SP1--> public values (+ proof)
 ```
 
-- **Workspace layout:** the root workspace contains `host` and `common`; `guest` is `exclude`d and is its own workspace (built for the `succinct` toolchain). `host/build.rs` calls `sp1_build::build_program("../guest")` and the host embeds the ELF via `include_elf!("prova-guest")`.
+- **Benchmark:** `evm-guest/` is a second SP1 program (revm 38, `default-features = false` + the `optional_*` cfg features, SP1's `sha3` patch for the keccak precompile). Its input is `prova_common::EvmInput` (the same `Input` + solc bytecode per contract name, so the ELF doesn't depend on the contracts) and it commits the same `Public`. `./prova bench` compiles with Solang and `solc --optimize --bin --bin-runtime` (→ `build/evm/`), then `prova-host --bench FILE` (`host/src/bench.rs`) runs each step on both with `trace: false`, requires equal public values (ignoring zero-valued slots), and prints cycles split by the guests' `cycle-tracker-report-*` regions setup/execute/commit (needs sp1-sdk's `profiling` feature, enabled in `host/Cargo.toml`). A deploy runs init code ++ args *as the account's code* at `--to`, so addresses match the native run.
+- **Workspace layout:** the root workspace contains `host` and `common`; `evm-guest` is excluded like `guest`; `guest` is `exclude`d and is its own workspace (built for the `succinct` toolchain). `host/build.rs` calls `sp1_build::build_program("../guest")` and the host embeds the ELF via `include_elf!("prova-guest")`.
 - **Linking the contracts:** `./prova compile` renames each object's `solang_deploy/solang_call` to `prova_deploy_NAME/prova_call_NAME` (`llvm-objcopy`) into `build/contracts/`, listing names in `build/contracts.txt`. `guest/build.rs` links them all and generates `CODES` (name → entry points) into `OUT_DIR/contracts.rs`; `host/build.rs` exposes the names as `env!("PROVA_CONTRACTS")`. Changing the set rebuilds the guest (new verifying key).
 - **Contract ABI with the guest** (the object must have exactly this interface):
   - exports `solang_deploy(ptr, len)` and `solang_call(ptr, len)` (renamed per contract at link time); the shift helpers `__ashlti3` etc. are weak;
@@ -46,6 +48,9 @@ contracts/*.sol --solang--> build/contracts/*.o --link--> guest --SP1--> public 
 
 ## Gotchas
 
+- The guest's per-syscall trace (`println!`) dominates cycle counts in `run`/`test` (e.g. 10.5M vs 233k for `hashChain(100)`); benchmarks set `Input::trace = false`.
+- Addresses 0x01–0x11 (and 0x100) are precompiles on Ethereum: revm runs those instead of a contract deployed there. Use other addresses in tests that `./prova bench` runs.
+- Solang's CSE pass (all targets) can misplace an array length used after a loop (`contracts/compute.sol` `sort`); `tests/compute.test` sets `solang --no-cse`.
 - Proving needs a lot of RAM (did not finish on 14 GB). Execution (`run`) is cheap after the first `sp1-sdk` build.
 - Re-run `./prova setup` after switching Solang branches: the r55 branch builds `target/riscv` with different flags and `make` won't notice. Also after editing `stdlib/*.c` in Solang: Solang's `build.rs` has no `rerun-if-changed` for the stdlib, so `cargo build` keeps the old bitcode (`make -C stdlib` fixes it).
 - `__init_heap` is idempotent on riscv (re-entrant calls share a contract's heap); memory a frame allocated is not freed when it ends.

@@ -123,6 +123,17 @@ struct World {
 
 static mut WORLD: Option<World> = None;
 
+/// Whether to print a line per `__sys_*` call (`Input::trace`).
+static mut TRACE: bool = false;
+
+macro_rules! trace {
+    ($($arg:tt)*) => {
+        if unsafe { TRACE } {
+            println!($($arg)*);
+        }
+    };
+}
+
 fn world() -> &'static mut World {
     unsafe { WORLD.as_mut().unwrap() }
 }
@@ -139,7 +150,9 @@ fn code_index(name: &str) -> usize {
 }
 
 pub fn main() {
+    println!("cycle-tracker-report-start: setup");
     let input: Input = read();
+    unsafe { TRACE = input.trace };
 
     let mut code = BTreeMap::new();
     let mut storage = BTreeMap::new();
@@ -177,6 +190,9 @@ pub fn main() {
         });
     }
 
+    println!("cycle-tracker-report-end: setup");
+
+    println!("cycle-tracker-report-start: execute");
     let (reverted, output) = match entry {
         Some(entry) => run(
             entry,
@@ -188,6 +204,7 @@ pub fn main() {
         ),
         None => (deploy, Vec::new()),
     };
+    println!("cycle-tracker-report-end: execute");
     finish(reverted, output);
 }
 
@@ -238,7 +255,7 @@ fn run(
 fn leave(reverted: bool, data: *const u8, len: u64) -> ! {
     let world = world();
     world.output = bytes(data, len).to_vec();
-    println!(
+    trace!(
         "  {}{} 0x{}",
         indent(),
         if reverted { "revert" } else { "return" },
@@ -274,7 +291,7 @@ extern "C" fn __sys_sload(k0: u64, k1: u64, k2: u64, k3: u64, out: *mut [u64; 4]
         .get(&(frame().address, key))
         .copied()
         .unwrap_or_default();
-    println!("  {}sload  {} -> {}", indent(), hex(&key), hex(&value));
+    trace!("  {}sload  {} -> {}", indent(), hex(&key), hex(&value));
     unsafe { *out = to_limbs(&value) };
 }
 
@@ -282,12 +299,12 @@ extern "C" fn __sys_sload(k0: u64, k1: u64, k2: u64, k3: u64, out: *mut [u64; 4]
 #[allow(clippy::too_many_arguments)]
 extern "C" fn __sys_sstore(k0: u64, k1: u64, k2: u64, k3: u64, v0: u64, v1: u64, v2: u64, v3: u64) {
     if frame().is_static {
-        println!("  {}sstore in a static call", indent());
+        trace!("  {}sstore in a static call", indent());
         leave(true, core::ptr::null(), 0);
     }
     let key = to_word([k0, k1, k2, k3]);
     let value = to_word([v0, v1, v2, v3]);
-    println!("  {}sstore {} <- {}", indent(), hex(&key), hex(&value));
+    trace!("  {}sstore {} <- {}", indent(), hex(&key), hex(&value));
     let world = world();
     let address = frame().address;
     let old = world.storage.insert((address, key), value);
@@ -300,7 +317,7 @@ extern "C" fn __sys_keccak256(data: *const u8, len: u64, out: *mut [u8; 32]) {
     let mut keccak = Keccak::v256();
     keccak.update(data);
     unsafe { keccak.finalize(&mut *out) };
-    println!(
+    trace!(
         "  {}keccak 0x{} -> 0x{}",
         indent(),
         bytes_hex(data),
@@ -312,7 +329,7 @@ extern "C" fn __sys_keccak256(data: *const u8, len: u64, out: *mut [u8; 32]) {
 #[no_mangle]
 extern "C" fn __sys_log(data: *const u8, len: u64, topics: *const u8, n_topics: u64) {
     if frame().is_static {
-        println!("  {}log in a static call", indent());
+        trace!("  {}log in a static call", indent());
         leave(true, core::ptr::null(), 0);
     }
     assert!(n_topics <= 4, "an event has at most 4 topics");
@@ -321,7 +338,7 @@ extern "C" fn __sys_log(data: *const u8, len: u64, topics: *const u8, n_topics: 
         .map(|topic| topic.try_into().unwrap())
         .collect();
     let data = bytes(data, len).to_vec();
-    println!(
+    trace!(
         "  {}log    [{}] 0x{}",
         indent(),
         topics.iter().map(hex).collect::<Vec<_>>().join(", "),
@@ -435,7 +452,7 @@ fn call(
 ) -> u64 {
     // The callee's input is copied out of the caller's memory.
     let input = bytes(input, len).to_vec();
-    println!(
+    trace!(
         "  {}{kind} {} 0x{}",
         indent(),
         short_address(&code),
@@ -510,6 +527,7 @@ fn state(world: &World) -> State {
 /// Commits the public values. A top-level revert keeps the state as it was:
 /// no storage writes, no new contract, no events.
 fn finish(reverted: bool, output: Vec<u8>) -> ! {
+    println!("cycle-tracker-report-start: commit");
     let world = unsafe { WORLD.take().unwrap() };
     let (state_after, logs) = if reverted {
         (world.input.state.clone(), Vec::new())
@@ -527,6 +545,7 @@ fn finish(reverted: bool, output: Vec<u8>) -> ! {
         logs,
         state_after,
     });
+    println!("cycle-tracker-report-end: commit");
 
     sp1_zkvm::syscalls::syscall_halt(0)
 }
