@@ -5,6 +5,7 @@ use std::process::exit;
 use std::time::Instant;
 use tiny_keccak::{Hasher, Keccak};
 
+mod abi;
 mod script;
 
 const ELF: Elf = include_elf!("prova-guest");
@@ -118,7 +119,8 @@ fn fail(message: &str) -> ! {
 }
 
 fn parse_step(text: &str, defaults: &Context) -> Result<Step, String> {
-    let mut parts = text.split_whitespace();
+    let tokens = abi::tokenize(text)?;
+    let mut parts = tokens.iter().map(String::as_str);
     let mut context = defaults.clone();
     let head = loop {
         let head = parts.next().ok_or("empty step")?;
@@ -140,9 +142,7 @@ fn parse_step(text: &str, defaults: &Context) -> Result<Step, String> {
         }
         selector(head).to_vec()
     };
-    for arg in parts {
-        calldata.extend_from_slice(&parse_word(arg)?);
-    }
+    calldata.extend_from_slice(&abi::encode(&abi::parse_values(parts)?));
 
     Ok(Step {
         label: text.trim().to_string(),

@@ -64,15 +64,14 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
         let case = cases
             .last_mut()
             .ok_or_else(|| at("an expectation needs a step above it".into()))?;
-        let mut words = content.split_whitespace();
+        let tokens = crate::abi::tokenize(content).map_err(at)?;
+        let mut words = tokens.iter().map(String::as_str);
         match words.next().unwrap() {
             "reverts" => case.reverts = true,
             "returns" => {
-                let mut output = Vec::new();
-                for word in words {
-                    output.extend_from_slice(&parse_word(word).map_err(at)?);
-                }
-                case.expect.push(Expect::Output(output));
+                let values = crate::abi::parse_values(words).map_err(at)?;
+                case.expect
+                    .push(Expect::Output(crate::abi::encode(&values)));
             }
             "output" => {
                 let bytes = words.next().unwrap_or("");
@@ -124,14 +123,15 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
                     if word == "data" {
                         in_data = true;
                     } else if in_data {
-                        data.extend_from_slice(&parse_word(word).map_err(at)?);
+                        data.push(crate::abi::parse_value(word).map_err(at)?);
                     } else if word.contains('(') {
                         topics.push(keccak256(word.as_bytes()));
                     } else {
                         topics.push(parse_word(word).map_err(at)?);
                     }
                 }
-                case.expect.push(Expect::Log(topics, data));
+                case.expect
+                    .push(Expect::Log(topics, crate::abi::encode(&data)));
             }
             other => return Err(at(format!("unknown expectation `{other}`"))),
         }

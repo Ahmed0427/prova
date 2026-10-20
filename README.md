@@ -67,8 +67,9 @@ A step is one quoted transaction, optionally starting with context options
   The signature must be the canonical one (no spaces, no names), because its
   hash is the selector.
 
-Each `ARG` is a single 32-byte ABI word: `42`, `-1`, `true`, `false` or
-`0xHEX`. Hex is right-aligned like a number, so for `bytesN` arguments write
+Each `ARG` is a 32-byte ABI word (`42`, `-1`, `true`, `false` or `0xHEX`),
+a `string` (`"text"`) or a `bytes` (`hex"00ff"`); the args are ABI-encoded
+as a tuple, so strings get an offset and a tail. Hex is right-aligned like a number, so for `bytesN` arguments write
 the full word: `bytes4 0xcafebabe` is
 `0xcafebabe00000000000000000000000000000000000000000000000000000000`.
 
@@ -113,7 +114,7 @@ nope()
 | Expectation | Meaning |
 |---|---|
 | `reverts` | the step reverts (without it, the step must succeed) |
-| `returns WORD...` | the output is exactly these 32-byte words (none: empty) |
+| `returns VALUE...` | the output is exactly the ABI encoding of these values (words, `"text"`, `hex"..."`; none: empty) |
 | `output 0xHEX` | the output is exactly these bytes |
 | `storage SLOT = VALUE` | after the step; `0` also matches a slot never written |
 | `syscall NAME COUNT` | an SP1 precompile ran exactly COUNT times, e.g. `KECCAK_PERMUTE` |
@@ -186,8 +187,8 @@ docs/review.md  a longer walkthrough of the Solang side and the design
   `target/riscv` with other flags, and `make` won't notice the difference.
 - **One contract at a time.** `build/contract.o` is linked into the guest, so
   compiling another contract rebuilds the guest.
-- **What's not supported yet:** storage arrays, `string`/`bytes`,
-  dynamic arrays, external calls. Using them makes
+- **What's not supported yet:** storage arrays and storage strings,
+  dynamic arrays in the ABI, `abi.encodePacked`, external calls. Using them makes
   Solang panic with `unimplemented`.
-- **Known deviations from solc:** trailing calldata reverts, and
-  `min / -1` reverts even in `unchecked`. See `docs/spec.md`.
+- **Known deviations from solc:** `min / -1` reverts even in `unchecked`.
+  See `docs/spec.md`.

@@ -22,6 +22,10 @@ inc(uint32) 0x100000000
     reverts
     storage 0x0 = 10
 
-# Calldata shorter than the arguments.
+# Calldata shorter than the arguments reverts with empty data.
 inc(uint32)
     reverts
+    output 0x
+# Trailing bytes are ignored, as in solc.
+inc(uint32) 1 2
+    storage 0x0 = 11
