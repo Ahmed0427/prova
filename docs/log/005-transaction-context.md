@@ -229,7 +229,7 @@ $ cargo clippy (both repos)    no warnings in touched files
 ## 6. Commits
 
 - Solang: `877b7537 read msg.sender, msg.value, address(this) and block info from syscalls`
-- prova: filled in by the next commit.
+- prova: `4e5dbe6 add transaction context syscalls, host options and shared io types`
 
 ## 7. Open issues / follow-ups
 

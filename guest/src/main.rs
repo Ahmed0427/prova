@@ -2,13 +2,14 @@
 #![allow(static_mut_refs)]
 sp1_zkvm::entrypoint!(main);
 
-use prova_common::{Address, Input, Public, Word};
+use prova_common::{Address, Input, Log, Public, Word};
 use sp1_zkvm::io::{commit, read};
 use std::collections::BTreeMap;
 use tiny_keccak::{Hasher, Keccak};
 
 static mut STORAGE: BTreeMap<Word, Word> = BTreeMap::new();
 static mut INPUT: Option<Input> = None;
+static mut LOGS: Vec<Log> = Vec::new();
 
 extern "C" {
     fn solang_deploy(input: *const u8, len: u32);
@@ -71,6 +72,29 @@ extern "C" fn __sys_keccak256(data: *const u8, len: u64, out: *mut [u8; 32]) {
     println!("  keccak 0x{} -> 0x{}", bytes_hex(data), bytes_hex(unsafe { &*out }));
 }
 
+/// `topics` is `n_topics` 32-byte words, next to each other.
+#[no_mangle]
+extern "C" fn __sys_log(data: *const u8, len: u64, topics: *const u8, n_topics: u64) {
+    assert!(n_topics <= 4, "an event has at most 4 topics");
+    let topics: Vec<Word> = bytes(topics, 32 * n_topics)
+        .chunks(32)
+        .map(|topic| topic.try_into().unwrap())
+        .collect();
+    let data = bytes(data, len).to_vec();
+    println!(
+        "  log    [{}] 0x{}",
+        topics.iter().map(hex).collect::<Vec<_>>().join(", "),
+        bytes_hex(&data)
+    );
+    unsafe {
+        LOGS.push(Log {
+            address: input().context.address,
+            topics,
+            data,
+        })
+    };
+}
+
 #[no_mangle]
 extern "C" fn __sys_caller(out: *mut Address) {
     unsafe { *out = input().context.caller };
@@ -126,6 +150,11 @@ fn finish(reverted: bool, data: *const u8, len: u64, storage_after: Vec<(Word, W
     );
 
     let input = unsafe { INPUT.take().unwrap() };
+    let logs = if reverted {
+        Vec::new()
+    } else {
+        unsafe { core::mem::take(&mut LOGS) }
+    };
     commit(&Public {
         context: input.context,
         deploy: input.deploy,
@@ -133,6 +162,7 @@ fn finish(reverted: bool, data: *const u8, len: u64, storage_after: Vec<(Word, W
         storage_before: input.storage,
         reverted,
         output,
+        logs,
         storage_after,
     });
 

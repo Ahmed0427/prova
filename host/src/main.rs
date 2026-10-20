@@ -94,6 +94,15 @@ fn print_public(public: &Public, defaults: &Context) {
     println!("  storage before  {}", show_storage(&public.storage_before));
     println!("  reverted        {}", public.reverted);
     println!("  output          0x{}", hex(&public.output));
+    for log in &public.logs {
+        let topics: Vec<_> = log.topics.iter().map(short).collect();
+        println!(
+            "  log             {} [{}] 0x{}",
+            short_address(&log.address),
+            topics.join(", "),
+            hex(&log.data)
+        );
+    }
     println!("  storage after   {}", show_storage(&public.storage_after));
 }
 
@@ -169,11 +178,15 @@ fn parse_word(arg: &str) -> Result<Word, String> {
 }
 
 fn selector(signature: &str) -> [u8; 4] {
+    keccak256(signature.as_bytes())[..4].try_into().unwrap()
+}
+
+fn keccak256(data: &[u8]) -> Word {
     let mut hash = [0; 32];
     let mut keccak = Keccak::v256();
-    keccak.update(signature.as_bytes());
+    keccak.update(data);
     keccak.finalize(&mut hash);
-    hash[..4].try_into().unwrap()
+    hash
 }
 
 fn stdin(step: &Step, storage: &Storage) -> SP1Stdin {

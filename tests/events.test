@@ -1,0 +1,23 @@
+# Events: topic 0 = keccak256(signature) (here written as the signature), indexed
+# fields as topics, the other fields ABI-encoded as data. Topic hashes agree
+# with `solc --hashes contracts/events.sol`.
+contract contracts/events.sol
+
+--from 0xa11ce fire()
+    log Plain(uint256,bool) data 1 true
+    log Indexed(address,address,uint256) 0xa11ce 0xb0b data 5
+    log Mixed(int8,bytes4,uint64,address) -2 0xcafebabe00000000000000000000000000000000000000000000000000000000 data 7 0xc0de
+    # anonymous: no signature topic
+    log 9 data 10
+    log Empty()
+    storage 0x0 = 1
+
+# A revert drops the events emitted before it.
+fireThenRevert()
+    reverts
+    logs 0
+    storage 0x0 = 1
+
+fired()
+    returns 1
+    logs 0
