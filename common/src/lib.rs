@@ -5,6 +5,7 @@
 #![no_std]
 extern crate alloc;
 
+use alloc::string::String;
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
@@ -28,15 +29,30 @@ pub struct Context {
     pub timestamp: u64,
 }
 
+/// A contract account: which linked contract runs at `address`, and its
+/// storage.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Account {
+    pub address: Address,
+    /// The contract's name, as linked into the guest (`build/contracts.txt`).
+    pub code: String,
+    /// Big-endian `(slot, value)` pairs, sorted by slot.
+    pub storage: Storage,
+}
+
+/// Every contract account, sorted by address.
+pub type State = Vec<Account>;
+
 /// The guest's only input.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Input {
     pub context: Context,
-    /// `solang_deploy` (true) or `solang_call`.
-    pub deploy: bool,
+    /// `Some(name)`: deploy that contract at `context.address`, running its
+    /// constructor. `None`: call the contract at `context.address`.
+    pub deploy: Option<String>,
     pub calldata: Vec<u8>,
-    /// The starting storage, big-endian `(slot, value)` pairs.
-    pub storage: Storage,
+    /// The state the transaction starts from.
+    pub state: State,
 }
 
 /// An event, as on Ethereum.
@@ -53,14 +69,14 @@ pub struct Log {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Public {
     pub context: Context,
-    pub deploy: bool,
+    pub deploy: Option<String>,
     pub calldata: Vec<u8>,
-    pub storage_before: Storage,
+    pub state_before: State,
     pub reverted: bool,
     /// Return data, or revert data.
     pub output: Vec<u8>,
     /// The events emitted, in order; none after a revert.
     pub logs: Vec<Log>,
-    /// Sorted by slot; equal to `storage_before` after a revert.
-    pub storage_after: Storage,
+    /// Equal to `state_before` after a revert.
+    pub state_after: State,
 }

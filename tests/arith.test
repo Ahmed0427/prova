@@ -1,6 +1,8 @@
 # Division and modulo by zero revert with Panic(0x12), as in solc.
 contract contracts/arith.sol
 
+deploy
+
 udiv8(uint8,uint8) 6 3
     returns 2
 udiv8(uint8,uint8) 6 0

@@ -1,0 +1,38 @@
+# Two contracts from two files linked into one guest, deployed at their own
+# addresses. Each account has its own storage.
+contract contracts/erc20.sol
+contract contracts/incrementer.sol
+
+--from 0xa11ce --to 0xe20 deploy erc20 1000
+    storage 0xe20 0x0 = 1000
+--to 0x1c deploy incrementer 5
+    storage 0x1c 0x0 = 5
+    storage 0xe20 0x0 = 1000
+
+# Options on a line of their own apply to the steps after it.
+--to 0x1c
+inc(uint32) 2
+    storage 0x0 = 7
+get()
+    returns 7
+
+--to 0xe20
+totalSupply()
+    returns 1000
+--from 0xa11ce transfer(address,uint256) 0xb0b 1
+    returns true
+
+# The same code at a second address starts with empty storage.
+--to 0x2c deploy incrementer 1
+--to 0x2c get()
+    returns 1
+--to 0x1c get()
+    returns 7
+
+# Deploying where code already is fails, as on Ethereum.
+--to 0x1c deploy erc20 1
+    reverts
+    storage 0x1c 0x0 = 7
+# A call to an address without code succeeds and returns nothing.
+--to 0xdead get()
+    returns

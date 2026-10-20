@@ -19,6 +19,8 @@ whoami()
     returns 0xffffffffffffffffffffffffffffffffffffffff
 me()
     returns 0xc0de
+# A second instance at another address.
+--to 0x1234 deploy
 --to 0x1234 me()
     returns 0x1234
 when()

@@ -13,7 +13,11 @@
 //!
 //! A step must succeed unless it is followed by `reverts`.
 
-use crate::{default_context, hex, keccak256, parse_step, parse_word, short, Step};
+use crate::{
+    account, default_context, hex, keccak256, parse_address, parse_step, parse_word, set_option,
+    short, short_address, Step,
+};
+use prova_common::Address;
 use prova_common::{Public, Word};
 
 pub struct Case {
@@ -26,8 +30,9 @@ pub struct Case {
 pub enum Expect {
     /// The exact output bytes: `returns WORD...` or `output 0xHEX`.
     Output(Vec<u8>),
-    /// `storage SLOT = VALUE` after the step; 0 also matches a missing slot.
-    Storage(Word, Word),
+    /// `storage [ADDRESS] SLOT = VALUE` after the step, in the account at
+    /// ADDRESS (default: the step's `--to`); 0 also matches a missing slot.
+    Storage(Address, Word, Word),
     /// `syscall NAME COUNT`: how often a precompile ran, e.g. `KECCAK_PERMUTE`.
     Syscall(String, u64),
     /// `logs N`: the number of events.
@@ -39,6 +44,9 @@ pub enum Expect {
 
 pub fn parse(text: &str) -> Result<Vec<Case>, String> {
     let mut cases: Vec<Case> = Vec::new();
+    // A line of options only, like `--from 0xa11ce --to 0xb`, sets them for
+    // the steps after it.
+    let mut defaults = default_context();
 
     for (i, raw) in text.lines().enumerate() {
         let line = i + 1;
@@ -52,9 +60,20 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
             if content.starts_with("contract ") {
                 continue;
             }
+            let tokens: Vec<&str> = content.split_whitespace().collect();
+            if tokens.len().is_multiple_of(2)
+                && tokens.iter().step_by(2).all(|t| t.starts_with("--"))
+            {
+                for pair in tokens.chunks(2) {
+                    if !set_option(&mut defaults, pair[0], pair[1]).map_err(at)? {
+                        return Err(at(format!("unknown option `{}`", pair[0])));
+                    }
+                }
+                continue;
+            }
             cases.push(Case {
                 line,
-                step: parse_step(content, &default_context()).map_err(at)?,
+                step: parse_step(content, &defaults).map_err(at)?,
                 reverts: false,
                 expect: Vec::new(),
             });
@@ -100,10 +119,15 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
             }
             "storage" => {
                 let rest: Vec<&str> = words.collect();
-                let [slot, "=", value] = rest[..] else {
-                    return Err(at("write `storage SLOT = VALUE`".into()));
+                let (address, slot, value) = match rest[..] {
+                    [slot, "=", value] => (case.step.context.address, slot, value),
+                    [address, slot, "=", value] => {
+                        (parse_address(address).map_err(at)?, slot, value)
+                    }
+                    _ => return Err(at("write `storage [ADDRESS] SLOT = VALUE`".into())),
                 };
                 case.expect.push(Expect::Storage(
+                    address,
                     parse_word(slot).map_err(at)?,
                     parse_word(value).map_err(at)?,
                 ));
@@ -200,15 +224,14 @@ pub fn check(case: &Case, public: &Public, syscalls: &[(String, u64)]) -> Vec<St
                 hex(&public.output),
                 hex(output)
             )),
-            Expect::Storage(slot, value) => {
-                let actual = public
-                    .storage_after
-                    .iter()
-                    .find(|(s, _)| s == slot)
+            Expect::Storage(address, slot, value) => {
+                let actual = account(&public.state_after, address)
+                    .and_then(|account| account.storage.iter().find(|(s, _)| s == slot))
                     .map_or([0; 32], |(_, v)| *v);
                 if actual != *value {
                     failures.push(format!(
-                        "storage {} is {}, expected {}",
+                        "storage {} {} is {}, expected {}",
+                        short_address(address),
                         short(slot),
                         short(&actual),
                         short(value)
