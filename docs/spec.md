@@ -137,7 +137,8 @@ _Noreturn void __sys_revert(const uint8_t *data, uint64_t len);
 | `assert(false)` | `Panic(1)`: `0x4e487b71` + word `0x01` |
 | arithmetic overflow | `Panic(0x11)` |
 | array index out of bounds | `Panic(0x32)` |
-| division or modulo by zero | **does not revert** (known bug): RISC-V `div`/`rem` by zero give all-ones/the dividend instead of trapping, and the compiler emits no check, so `6 / 0` on `uint8` returns 255. solc reverts with `Panic(0x12)`. To fix in phase 1. |
+| division or modulo by zero | `Panic(0x12)` |
+| `type(intN).min / -1` | `Panic(0x11)`, also inside `unchecked { }` (solc wraps there; see log 003) |
 | out of heap | empty |
 | `require(cond, "msg")`, `revert("msg")`, custom errors with dynamic fields | not compiled yet: needs `string` encoding (planned, phase 1) |
 
