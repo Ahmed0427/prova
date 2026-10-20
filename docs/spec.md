@@ -11,7 +11,7 @@ Status tags: **implemented** (the compiler emits it and the SP1 guest
 provides it), **planned** (proposed here; the signature is final only once
 its log entry in `docs/log/` lands and the tag changes).
 
-Interface version: **0** (phase 0 baseline).
+Interface version: **1** (adds `__sys_keccak256`, log 004).
 
 ## 1. Object file
 
@@ -115,10 +115,35 @@ order from slot 0; structs and fixed arrays take consecutive slots, one per
 value inside. Words hold the value as solc holds an unpacked value: integers,
 enums and `bytesN` zero-extended from their own width (so `int64 -42` is
 `0xffffffffffffffd6`, and `bytes4 0xcafebabe` is `0xcafebabe`, right-aligned),
-`bool` 0/1, `address` as a uint160. Mapping and dynamic array slots: planned
-(phase 1, §6).
+`bool` 0/1, `address` as a uint160.
 
-### 3.3 End of execution — implemented
+Mappings use solc's slots exactly: `m[k]` for a mapping at slot `p` is at
+`keccak256(abi_word(k) ++ p)` for a value type key (`abi_word` = the 32-byte
+ABI encoding: integers sign/zero-extended, `bytesN` left-aligned, `address`
+right-aligned) and `keccak256(k ++ p)` for a `string`/`bytes` key, `p` as
+32 big-endian bytes. Nested mappings apply this repeatedly; a struct value
+takes consecutive slots from the hashed one. Dynamic array slots: not
+implemented (`.push`, `.length` on storage arrays don't compile).
+
+Since every value has its own slot, a contract made only of full-word values
+and mappings (an ERC-20) has the same storage as solc gives it; one with
+small values next to each other does not (solc packs them). See log 004.
+
+### 3.3 Hashing — implemented
+
+```c
+void __sys_keccak256(const uint8_t *data, uint64_t len, uint8_t out[32]);
+```
+
+Writes Keccak-256 (Ethereum's, padding `0x01`) of `data[0..len]` to `out`,
+the digest in its natural byte order. `out` has no alignment requirement.
+The compiler turns the digest into the `bytes32`/`uint256` whose big-endian
+bytes it is. Used for `keccak256(...)` and for mapping slots (§3.2). The SP1
+guest uses SP1's patched `tiny-keccak`, so each 136-byte block is one
+`KECCAK_PERMUTE` precompile call. Calls whose input is constant at compile
+time (e.g. `keccak256("abc")`) are folded and never reach the runtime.
+
+### 3.4 End of execution — implemented
 
 ```c
 _Noreturn void __sys_return(const uint8_t *data, uint64_t len);
@@ -149,14 +174,13 @@ ends the transaction. With nested calls (planned, phase 2) `__sys_revert`
 ends only the current call frame: it discards that frame's writes and
 returns failure to the caller; only a top-level revert ends the transaction.
 
-### 3.4 Planned imports
+### 3.5 Planned imports
 
 Proposed signatures. Each will be settled, with the options considered, in
 its log entry.
 
 | Import | Proposed signature | Solidity | Phase |
 |---|---|---|---|
-| `__sys_keccak256` | `void (const uint8_t *data, uint64_t len, uint8_t out[32])` — digest in its natural byte order | `keccak256(...)`, mapping slots | 1 |
 | `__sys_log` | `void (const uint8_t *data, uint64_t len, const uint8_t *topics, uint64_t n_topics)` — `topics` is `n_topics × 32` big-endian bytes, `n_topics ≤ 4` | `emit E(...)` | 1 |
 | `__sys_caller` | `void (uint8_t out[20])` | `msg.sender` | 1 |
 | `__sys_callvalue` | `void (uint64_t out[4])` | `msg.value` | 1 |
@@ -215,9 +239,9 @@ Planned later: hashes or state roots in place of full storage.
 
 | Item | Plan | Phase |
 |---|---|---|
-| mapping slot | `keccak256(pad32(key) ++ pad32(slot))`, as solc | 1 |
+| mapping slot | implemented (§3.2) | 1 |
 | dynamic array / string storage | as solc: length at `p`, data from `keccak256(p)` | 1 (as needed by ERC-20) |
-| storage packing | open decision (solc packing vs one slot per value); see the phase 1 log | 1 |
+| storage packing | decided: one slot per value, no packing (log 004) | 1 |
 
 ## 7. Multiple contracts — planned (phase 2)
 

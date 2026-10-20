@@ -5,5 +5,10 @@ edition = "2021"
 
 [dependencies]
 sp1-zkvm = "6.8.0"
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [workspace]
+
+# SP1's tiny-keccak runs the permutation as the keccak precompile.
+[patch.crates-io]
+tiny-keccak = { git = "https://github.com/sp1-patches/tiny-keccak", tag = "patch-2.0.2-sp1-6.2.0" }
