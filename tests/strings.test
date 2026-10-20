@@ -2,6 +2,8 @@
 # zero-padded data in the tail. "text" is a string value, hex"..." a bytes value.
 contract contracts/strings.sol
 
+deploy
+
 name()
     returns "Prova Token"
 echo(string) "hello world"

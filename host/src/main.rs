@@ -1,4 +1,4 @@
-use prova_common::{Address, Context, Input, Public, Storage, Word};
+use prova_common::{Account, Address, Context, Input, Public, State, Word};
 use sp1_sdk::blocking::{CpuProver, ProveRequest, Prover, ProverClient};
 use sp1_sdk::{include_elf, Elf, HashableKey, ProvingKey, SP1PublicValues, SP1Stdin};
 use std::process::exit;
@@ -13,8 +13,9 @@ const ELF: Elf = include_elf!("prova-guest");
 const USAGE: &str = "usage: prova-host [--prove] [OPTION VALUE]... STEP...
        prova-host --test FILE
 
-each STEP is one transaction, run on the storage the previous one left:
-  'deploy ARG...'          run the constructor
+each STEP is one transaction, run on the state the previous one left:
+  'deploy [NAME] ARG...'   deploy contract NAME at --to (NAME may be left out
+                           if only one contract is linked)
   'SIGNATURE ARG...'       call a function, e.g. 'inc(uint32) 5' or 'get()'
   '--from 0xa SIGNATURE ARG...'   with context options for this step only
 
@@ -34,8 +35,17 @@ with --test, the steps and their expected results come from FILE.";
 struct Step {
     label: String,
     context: Context,
-    deploy: bool,
+    /// The contract to deploy, or `None` for a call.
+    deploy: Option<String>,
     calldata: Vec<u8>,
+}
+
+/// The contracts linked into the guest, from build/contracts.txt.
+fn contracts() -> Vec<&'static str> {
+    env!("PROVA_CONTRACTS")
+        .split(',')
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 fn default_context() -> Context {
@@ -92,7 +102,7 @@ fn print_public(public: &Public, defaults: &Context) {
             context.timestamp
         );
     }
-    println!("  storage before  {}", show_storage(&public.storage_before));
+    print_state("state before", &public.state_before);
     println!("  reverted        {}", public.reverted);
     println!("  output          0x{}", hex(&public.output));
     for log in &public.logs {
@@ -104,7 +114,7 @@ fn print_public(public: &Public, defaults: &Context) {
             hex(&log.data)
         );
     }
-    println!("  storage after   {}", show_storage(&public.storage_after));
+    print_state("state after", &public.state_after);
 }
 
 fn short_address(address: &Address) -> String {
@@ -132,9 +142,27 @@ fn parse_step(text: &str, defaults: &Context) -> Result<Step, String> {
             return Err(format!("unknown option `{head}`"));
         }
     };
-    let deploy = head == "deploy";
+    let deploy = if head == "deploy" {
+        let names = contracts();
+        let name = match parts.clone().next() {
+            Some(name) if names.contains(&name) => {
+                parts.next();
+                name
+            }
+            _ if names.len() == 1 => names[0],
+            _ => {
+                return Err(format!(
+                    "deploy which contract? write `deploy NAME ...` with one of: {}",
+                    names.join(", ")
+                ))
+            }
+        };
+        Some(name.to_string())
+    } else {
+        None
+    };
 
-    let mut calldata = if deploy {
+    let mut calldata = if deploy.is_some() {
         Vec::new()
     } else {
         if !head.contains('(') || !head.ends_with(')') {
@@ -189,13 +217,13 @@ fn keccak256(data: &[u8]) -> Word {
     hash
 }
 
-fn stdin(step: &Step, storage: &Storage) -> SP1Stdin {
+fn stdin(step: &Step, state: &State) -> SP1Stdin {
     let mut stdin = SP1Stdin::new();
     stdin.write(&Input {
         context: step.context.clone(),
-        deploy: step.deploy,
+        deploy: step.deploy.clone(),
         calldata: step.calldata.clone(),
-        storage: storage.clone(),
+        state: state.clone(),
     });
     stdin
 }
@@ -220,12 +248,29 @@ fn short(word: &Word) -> String {
     format!("0x{}", if digits.is_empty() { "0" } else { digits })
 }
 
-fn show_storage(storage: &Storage) -> String {
-    let slots: Vec<_> = storage
-        .iter()
-        .map(|(slot, value)| format!("{} = {}", short(slot), short(value)))
-        .collect();
-    format!("{{{}}}", slots.join(", "))
+fn print_state(label: &str, state: &State) {
+    if state.is_empty() {
+        println!("  {label:<15} {{}}");
+    }
+    for (i, account) in state.iter().enumerate() {
+        let slots: Vec<_> = account
+            .storage
+            .iter()
+            .map(|(slot, value)| format!("{} = {}", short(slot), short(value)))
+            .collect();
+        println!(
+            "  {:<15} {} {} {{{}}}",
+            if i == 0 { label } else { "" },
+            short_address(&account.address),
+            account.code,
+            slots.join(", ")
+        );
+    }
+}
+
+/// The account at `address`, if it has code.
+fn account<'a>(state: &'a State, address: &Address) -> Option<&'a Account> {
+    state.iter().find(|account| account.address == *address)
 }
 
 /// One step run in SP1's executor.
@@ -238,10 +283,10 @@ struct Run {
     syscalls: Vec<(String, u64)>,
 }
 
-fn run(prover: &CpuProver, step: &Step, storage: &Storage) -> Run {
+fn run(prover: &CpuProver, step: &Step, state: &State) -> Run {
     let (guest_stdout, log) = tokio::sync::watch::channel(String::new());
     let (values, report) = prover
-        .execute(ELF, stdin(step, storage))
+        .execute(ELF, stdin(step, state))
         .stdout(guest_stdout)
         .run()
         .unwrap_or_else(|err| fail(&format!("the guest failed: {err}")));
@@ -270,11 +315,11 @@ fn show_syscalls(syscalls: &[(String, u64)]) -> String {
     counts.join(", ")
 }
 
-fn execute(prover: &CpuProver, step: &Step, storage: &Storage) -> Public {
+fn execute(prover: &CpuProver, step: &Step, state: &State) -> Public {
     println!("\n== {}", step.label);
     println!("  calldata        0x{}", hex(&step.calldata));
 
-    let run = run(prover, step, storage);
+    let run = run(prover, step, state);
     print!("{}", run.trace);
     println!("  cycles          {}", run.cycles);
     if !run.syscalls.is_empty() {
@@ -284,15 +329,15 @@ fn execute(prover: &CpuProver, step: &Step, storage: &Storage) -> Public {
     run.public
 }
 
-/// Runs a test script; the steps share storage, as with `run`.
+/// Runs a test script; the steps share state, as with `run`.
 fn test(prover: &CpuProver, path: &str) -> bool {
     let text = std::fs::read_to_string(path).unwrap_or_else(|err| fail(&format!("{path}: {err}")));
     let cases = script::parse(&text).unwrap_or_else(|err| fail(&format!("{path}: {err}")));
 
-    let mut storage = Storage::new();
+    let mut state = State::new();
     let mut passed = 0;
     for case in &cases {
-        let run = run(prover, &case.step, &storage);
+        let run = run(prover, &case.step, &state);
         let failures = script::check(case, &run.public, &run.syscalls);
         if failures.is_empty() {
             passed += 1;
@@ -311,7 +356,7 @@ fn test(prover: &CpuProver, path: &str) -> bool {
             println!("  precompiles     {}", show_syscalls(&run.syscalls));
             print_public(&run.public, &default_context());
         }
-        storage = run.public.storage_after;
+        state = run.public.state_after;
     }
     println!("{path}: {passed}/{} steps passed", cases.len());
     passed == cases.len()
@@ -325,7 +370,7 @@ fn abbreviate(text: &str, width: usize) -> String {
     format!("{head}...")
 }
 
-fn prove(prover: &CpuProver, step: &Step, storage: &Storage) {
+fn prove(prover: &CpuProver, step: &Step, state: &State) {
     println!("\n== proving {}", step.label);
 
     let start = Instant::now();
@@ -335,7 +380,7 @@ fn prove(prover: &CpuProver, step: &Step, storage: &Storage) {
 
     let start = Instant::now();
     let mut proof = prover
-        .prove(&pk, stdin(step, storage))
+        .prove(&pk, stdin(step, state))
         .core()
         .run()
         .expect("proving failed");
@@ -417,13 +462,13 @@ fn main() {
         fail("no steps given");
     }
 
-    let mut storage = Storage::new();
+    let mut state = State::new();
 
     for (i, step) in steps.iter().enumerate() {
         if prove_last && i == steps.len() - 1 {
-            prove(&prover, step, &storage);
+            prove(&prover, step, &state);
         } else {
-            storage = execute(&prover, step, &storage).storage_after;
+            state = execute(&prover, step, &state).state_after;
         }
     }
 }

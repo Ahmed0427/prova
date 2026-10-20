@@ -3,6 +3,8 @@
 # with `solc --hashes contracts/events.sol`.
 contract contracts/events.sol
 
+deploy
+
 --from 0xa11ce fire()
     log Plain(uint256,bool) data 1 true
     log Indexed(address,address,uint256) 0xa11ce 0xb0b data 5

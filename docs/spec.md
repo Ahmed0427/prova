@@ -11,7 +11,7 @@ Status tags: **implemented** (the compiler emits it and the SP1 guest
 provides it), **planned** (proposed here; the signature is final only once
 its log entry in `docs/log/` lands and the tag changes).
 
-Interface version: **3** (adds `__sys_log`, log 006).
+Interface version: **4** (weak shift helpers; several contracts per program, log 009).
 
 ## 1. Object file
 
@@ -21,13 +21,15 @@ Interface version: **3** (adds `__sys_log`, log 006).
 | ISA | RV64IM only: `e_flags == 0` (no `C`, soft-float ABI), `.riscv.attributes` arch `rv64i2p1_m2p0` without `_a`/`_c` | implemented, checked by `tests/riscv.rs` |
 | Calling convention | RISC-V LP64 psABI (integer args in `a0`–`a7`, return in `a0`; 32-bit ints sign-extended to 64 bits) | implemented |
 | Code model | medium (`-code-model=medium`, stdlib built with `-mcmodel=medany`), matching SP1's `riscv64im-succinct-zkvm-elf` | implemented |
-| Defined global symbols | `solang_deploy`, `solang_call`, plus `__ashlti3`, `__ashrti3`, `__lshrti3` (128-bit shift helpers LLVM calls by name) | implemented |
+| Defined global symbols | `solang_deploy`, `solang_call` | implemented |
+| Defined weak symbols | `__ashlti3`, `__ashrti3`, `__lshrti3` (128-bit shift helpers LLVM calls by name; weak so that several objects link together) | implemented, checked by `tests/riscv.rs` |
 | Undefined symbols | only `__sys_*` (§3) | implemented, checked by `tests/riscv.rs` |
 | Everything else | internal linkage (heap, memcpy, bigint helpers, the contract's own functions) | implemented |
 
 The three shift helpers are an implementation detail, not part of the
-interface; a runtime must not call them. Linking two contracts into one
-program makes them, and the entry points, collide: see §7.
+interface; a runtime must not call them. Every object has the same two
+entry point names; a runtime that links several contracts into one program
+renames them (§7).
 
 ### Memory
 
@@ -235,24 +237,36 @@ its log entry.
 The host writes one `prova_common::Input` with `SP1Stdin::write`; the guest
 reads it with `sp1_zkvm::io::read`. `common/src/lib.rs` is the definition
 for both sides. Encoding: bincode v1, default options (integers
-little-endian, `Vec` as a `u64` length then the items, `bool` one byte,
-`[u8; N]` without a length, struct fields in order, no tags).
+little-endian, `Vec`/`String` as a `u64` length then the items, `bool` one
+byte, `Option` one byte tag then the value, `[u8; N]` without a length,
+struct fields in order).
 
 ```rust
 struct Input {
     context: Context,
-    deploy: bool,              // solang_deploy (true) or solang_call
-    calldata: Vec<u8>,         // the entry point's input
-    storage: Vec<(Word, Word)>,// starting storage, (slot, value) big-endian; any order
+    deploy: Option<String>,    // Some(name): deploy that contract at context.address
+                               // None: call the contract at context.address
+    calldata: Vec<u8>,         // constructor args (deploy) or selector + args (call)
+    state: Vec<Account>,       // the state the transaction starts from, sorted by address
+}
+struct Account {
+    address: [u8; 20],
+    code: String,              // the name of a contract linked into the guest
+    storage: Vec<(Word, Word)>,// (slot, value) big-endian, sorted by slot
 }
 struct Context {
     caller: [u8; 20],          // msg.sender
     value: [u8; 32],           // msg.value, big-endian
-    address: [u8; 20],         // address(this)
+    address: [u8; 20],         // address(this): the contract called or deployed
     block_number: u64,
     timestamp: u64,
 }
 ```
+
+Deploying where an account already has code reverts (as `CREATE` fails on
+Ethereum). Calling an address without code succeeds with empty output (as a
+call to an account without code does on Ethereum). A `code` name that isn't
+linked into the guest is a host error: the guest panics.
 
 Host defaults (`./prova run`, tests): caller `0x1`, value 0, address
 `0xc0de`, block 1, timestamp 1; `--from`, `--value`, `--to`, `--block`,
@@ -266,29 +280,30 @@ then calls `syscall_halt(0)`.
 ```rust
 struct Public {
     context: Context,              // as given
-    deploy: bool,                  // as given
+    deploy: Option<String>,        // as given
     calldata: Vec<u8>,             // as given
-    storage_before: Vec<(Word, Word)>, // as given
+    state_before: Vec<Account>,    // as given
     reverted: bool,
     output: Vec<u8>,               // return or revert data
     logs: Vec<Log>,                // events in emission order; empty on revert
-    storage_after: Vec<(Word, Word)>,  // the final map, sorted by slot; = storage_before on revert
+    state_after: Vec<Account>,     // sorted by address, storage sorted by slot; = state_before on revert
 }
 struct Log {
-    address: [u8; 20],             // the emitting contract (context.address)
+    address: [u8; 20],             // the contract that emitted it
     topics: Vec<[u8; 32]>,         // ≤ 4
     data: Vec<u8>,
 }
 ```
 
-A proof attests: this program (guest + linked contract, fixed by the
-verifying key) run on input `(context, deploy, calldata, storage_before)`
-produced `(reverted, output, logs, storage_after)`. It does **not** attest that
-`storage_before` is real chain state or that `context` is a real
-transaction.
+A proof attests: this program (guest + the linked contracts, fixed by the
+verifying key) run on input `(context, deploy, calldata, state_before)`
+produced `(reverted, output, logs, state_after)`. It does **not** attest
+that `state_before` is real chain state or that `context` is a real
+transaction. The code name in an account is meaningful only together with
+the verifying key: the key fixes which object each name runs.
 
-Planned later: hashes or state roots in place of full storage and logs
-(log 006 explains why the logs are committed in full for now).
+Planned later: hashes or state roots in place of full state and logs
+(log 006).
 
 ## 6. Planned compiler-side semantics
 
@@ -298,11 +313,17 @@ Planned later: hashes or state roots in place of full storage and logs
 | dynamic array / string storage | as solc: length at `p`, data from `keccak256(p)` | 1 (as needed by ERC-20) |
 | storage packing | decided: one slot per value, no packing (log 004) | 1 |
 
-## 7. Multiple contracts — planned (phase 2)
+## 7. Multiple contracts — implemented (log 009)
 
-Today the object exports fixed names, so one program can link only one
-contract. Phase 2 gives each contract unique symbol names, adds an address →
-contract registry in the guest, `__sys_call`, and a storage journal per call
-frame. The `__init_heap` reset at every entry point means a re-entrant call
-into a contract still running would clobber its heap; this has to be solved
-in phase 2 too.
+Several contract objects can be linked into one program. In this repo,
+`./prova compile A.sol B.sol` compiles every contract of each file and
+renames each object's entry points with `llvm-objcopy`:
+`solang_deploy` → `prova_deploy_NAME`, `solang_call` → `prova_call_NAME`.
+Every other symbol is local or weak, so nothing else collides. The guest's
+build script links all of them and generates a table `name → (deploy,
+call)`; an account's `code` names its row.
+
+Calls between contracts and the per-frame state they need are planned
+(phase 2, log 010). The `__init_heap` reset at every entry point means a
+re-entrant call into a contract still running would clobber its heap; this
+has to be solved with them.

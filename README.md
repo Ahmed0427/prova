@@ -8,7 +8,7 @@ SP1 execution. No EVM interpreter is involved: SP1 executes, and can prove, the
 contract's own instructions.
 
 ```
-contracts/foo.sol ──solang──► build/contract.o ──link──► guest ──SP1──► public values (+ proof)
+contracts/foo.sol ──solang──► build/contracts/foo.o ──link──► guest ──SP1──► public values (+ proof)
 ```
 
 ## Requirements
@@ -53,10 +53,10 @@ seconds. Output for one step:
   sstore 0x0 <- 0xa
   return 0x
   cycles          …
-  storage before  {0x0 = 0x5}
+  state before    0xc0de incrementer {0x0 = 0x5}
   reverted        false
   output          0x
-  storage after   {0x0 = 0xa}
+  state after     0xc0de incrementer {0x0 = 0xa}
 ```
 
 The `sload`/`sstore`/`return` lines are the contract calling into the guest.
@@ -66,8 +66,8 @@ The `sload`/`sstore`/`return` lines are the contract calling into the guest.
 | Command | What it does |
 |---|---|
 | `./prova setup` | Rebuilds Solang's RISC-V stdlib bitcode and Solang itself. |
-| `./prova compile FILE.sol [NAME]` | Compiles with `--target riscv` and copies the object to `build/contract.o`. If the file has several contracts, pass `NAME`. |
-| `./prova run STEP...` | Executes the steps in SP1, in order. Each step starts from the storage the previous one left. |
+| `./prova compile FILE.sol...` | Compiles every contract in the files with `--target riscv` into `build/contracts/NAME.o`, renaming each one's entry points so that all of them link into the guest. |
+| `./prova run STEP...` | Executes the steps in SP1, in order. Each step starts from the state the previous one left. |
 | `./prova prove STEP...` | Executes every step except the last, proves the last one, verifies the proof, then shows that a tampered copy is rejected. |
 | `./prova test [FILE...]` | Runs test scripts, by default every `tests/*.test`. See [Tests](#tests). |
 | `./prova inspect` | Prints the object's symbols and instruction set, and writes its disassembly to `build/contract.s`. |
@@ -76,7 +76,9 @@ The `sload`/`sstore`/`return` lines are the contract calling into the guest.
 A step is one quoted transaction, optionally starting with context options
 (see [Transaction context](#transaction-context)):
 
-- `'deploy ARG...'` runs the constructor; the args are the constructor arguments.
+- `'deploy [NAME] ARG...'` deploys contract `NAME` at the `--to` address and
+  runs its constructor with the args. `NAME` can be left out when only one
+  contract is linked.
 - `'SIGNATURE ARG...'` calls a function, e.g. `'inc(uint32) 5'` or `'get()'`.
   The signature must be the canonical one (no spaces, no names), because its
   hash is the selector.
@@ -131,12 +133,14 @@ nope()
 | `error "message"` | the step reverts with `Error(string)` of this message (`require(cond, "message")`) |
 | `returns VALUE...` | the output is exactly the ABI encoding of these values (words, `"text"`, `hex"..."`; none: empty) |
 | `output 0xHEX` | the output is exactly these bytes |
-| `storage SLOT = VALUE` | after the step; `0` also matches a slot never written |
+| `storage [ADDRESS] SLOT = VALUE` | after the step, in the contract at `ADDRESS` (default: the step's `--to`); `0` also matches a slot never written |
 | `syscall NAME COUNT` | an SP1 precompile ran exactly COUNT times, e.g. `KECCAK_PERMUTE` |
 | `log [SIG] TOPIC... [data WORD...]` | the next event; `SIG` like `Transfer(address,address,uint256)` stands for topic 0 (its keccak256). With any `log` line, the number of events must match too |
 | `logs N` | exactly N events |
 
-Steps share storage, as with `run`. `#` starts a comment. On a failure the
+Steps share state, as with `run`. A line with only options (`--to 0xb`)
+sets them for the steps after it. `#` starts a comment. A file may have
+several `contract` lines; all of them are linked. On a failure the
 step's guest trace is printed and the command exits non-zero.
 
 ## How it works
@@ -156,26 +160,29 @@ U __sys_caller, __sys_callvalue,  the transaction context
 U __sys_return, __sys_revert      end of the transaction
 ```
 
-`guest/build.rs` passes `build/contract.o` to the linker, and
-`guest/src/main.rs` defines the four `__sys_*` functions. They aren't SP1
-syscalls; they're plain function calls into Rust, which keeps storage in a
-`BTreeMap`. The only real SP1 syscalls are reading the input, `commit` and
+`guest/build.rs` passes every `build/contracts/NAME.o` to the linker and
+generates a table from contract names to entry points, and
+`guest/src/main.rs` defines the `__sys_*` functions. They aren't SP1
+syscalls; they're plain function calls into Rust, which keeps every
+contract's storage in a `BTreeMap` keyed by (address, slot). The only real SP1 syscalls are reading the input, `commit` and
 `halt`.
 
 One SP1 run is one transaction:
 
-1. Read `(context, deploy, calldata, storage)` from the host.
-2. Call `solang_deploy` or `solang_call`.
+1. Read `(context, deploy, calldata, state)` from the host. The state is a
+   list of accounts: address, contract name, storage.
+2. Deploy the named contract at `context.address`, or call the contract
+   there.
 3. On `__sys_return` or `__sys_revert`, commit the inputs together with
-   `(reverted, output, logs, storage after)`; after a revert there are no
-   logs and storage after is the storage before. Then halt.
+   `(reverted, output, logs, state after)`; after a revert there are no
+   logs and the state after is the state before. Then halt.
 
 The committed bytes are the public values. A proof says "this guest, with this
 contract linked in, produced these public values". Changing any of them makes
 verification fail, and so does linking a different contract, because that
 changes the verifying key.
 
-What it does **not** prove yet: that the starting storage is real chain state.
+What it does **not** prove yet: that the starting state is real chain state.
 The host supplies it, and the proof only makes it public.
 
 ## Layout
@@ -185,7 +192,7 @@ prova           the script
 contracts/      example contracts
 tests/          test scripts for ./prova test
 common/         the input and public values types, shared by guest and host
-guest/          the SP1 program; links build/contract.o
+guest/          the SP1 program; links build/contracts/*.o
 host/           runs the guest: execute, or prove and verify
 build/          compiler output (git-ignored)
 docs/spec.md    the interface between a contract object and its runtime
@@ -200,8 +207,8 @@ docs/review.md  a longer walkthrough of the Solang side and the design
   prover network (`.network()`).
 - **`./prova setup` after switching Solang branches.** The r55 branch builds
   `target/riscv` with other flags, and `make` won't notice the difference.
-- **One contract at a time.** `build/contract.o` is linked into the guest, so
-  compiling another contract rebuilds the guest.
+- **The contracts are part of the program.** Compiling a different set
+  rebuilds the guest and changes the verifying key.
 - **What's not supported yet:** storage arrays and storage strings,
   dynamic arrays in the ABI, `abi.encodePacked`, external calls. Using them makes
   Solang panic with `unimplemented`.

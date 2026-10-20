@@ -14,3 +14,4 @@ the real diff, verification, commits, and open issues.
 | [006](006-events.md) | Ethereum-style events through `__sys_log`; logs in the public values | 1 |
 | [007](007-dynamic-abi.md) | `string`/`bytes` in the Ethereum ABI, `Error(string)`, solc-style calldata checks | 1 |
 | [008](008-erc20.md) | `contracts/erc20.sol` and its test; `error "msg"` expectation | 1 |
+| [009](009-several-contracts.md) | several contracts in one guest: renamed entry points, weak helpers, address → contract registry, per-account state | 2 |

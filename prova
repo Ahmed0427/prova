@@ -18,15 +18,15 @@ usage() {
 usage: ./prova COMMAND
 
   setup                     build Solang (branch $SOLANG_BRANCH) and its RISC-V stdlib
-  compile FILE.sol [NAME]   compile a contract to build/contract.o
+  compile FILE.sol...       compile every contract in the files to build/contracts/
   run STEP...               execute transactions in SP1, one after another
   prove STEP...             execute all steps but the last, then prove the last one
   test [FILE...]            run test scripts (default: tests/*.test)
-  inspect                   symbols, ISA and disassembly of build/contract.o
+  inspect                   symbols, ISA and disassembly of each contract
   clean                     remove build/
 
 a STEP is one quoted transaction:
-  'deploy ARG...'           run the constructor
+  'deploy [NAME] ARG...'    deploy contract NAME (needed if several are linked)
   'SIGNATURE ARG...'        call a function, like 'inc(uint32) 5' or 'get()'
 ARG is one 32-byte ABI word: 42, -1, true, false or 0xHEX.
 
@@ -78,42 +78,47 @@ cmd_setup() {
     echo "solang: $(solang_bin)"
 }
 
+# Every contract in the files is linked into the guest. Solang names the entry
+# points solang_deploy/solang_call in every object; they are renamed to
+# prova_deploy_NAME/prova_call_NAME here so that the objects can be linked
+# together.
 cmd_compile() {
-    [[ $# -ge 1 ]] || die "usage: ./prova compile FILE.sol [NAME]"
-    local file name out
-    file="$(realpath "$1")"
-    [[ -f "$file" ]] || die "$1 not found"
+    [[ $# -ge 1 ]] || die "usage: ./prova compile FILE.sol..."
     [[ -x "$(solang_bin)" ]] || die "solang is not built, run ./prova setup"
     check_branch
+    local file out objcopy names=() name i=0
+    objcopy="$(llvm_bin_dir)/llvm-objcopy"
 
-    out="$BUILD/out"
-    rm -rf "$out"
-    mkdir -p "$out"
+    rm -rf "$BUILD/out" "$BUILD/contracts"
+    mkdir -p "$BUILD/contracts"
+    for file in "$@"; do
+        [[ -f "$file" ]] || die "$file not found"
+        out="$BUILD/out/$i"
+        i=$((i + 1))
+        mkdir -p "$out"
+        step "compiling $file with solang --target riscv"
+        "$(solang_bin)" compile --target riscv "$(realpath "$file")" -o "$out" 2>&1 \
+            | grep -v "is not a recognized feature" || true
+        for object in "$out"/*.o; do
+            [[ -f "$object" ]] || die "no object file was produced for $file"
+            name="$(basename "$object" .o)"
+            [[ ! -f "$BUILD/contracts/$name.o" ]] || die "two contracts are named $name"
+            "$objcopy" --redefine-sym "solang_deploy=prova_deploy_$name" \
+                --redefine-sym "solang_call=prova_call_$name" \
+                "$object" "$BUILD/contracts/$name.o"
+            names+=("$name")
+        done
+    done
 
-    step "compiling ${1} with solang --target riscv"
-    "$(solang_bin)" compile --target riscv "$file" -o "$out" 2>&1 \
-        | grep -v "is not a recognized feature" || true
-
-    mapfile -t objects < <(find "$out" -name '*.o' | sort)
-    [[ ${#objects[@]} -gt 0 ]] || die "no object file was produced"
-
-    if [[ $# -ge 2 ]]; then
-        name="$2"
-    elif [[ ${#objects[@]} -eq 1 ]]; then
-        name="$(basename "${objects[0]}" .o)"
-    else
-        die "$1 has several contracts, pick one: $(basename -a "${objects[@]}" | sed 's/\.o$//' | tr '\n' ' ')"
-    fi
-    [[ -f "$out/$name.o" ]] || die "no contract named $name"
-
-    cp "$out/$name.o" "$BUILD/contract.o"
-    echo "$name" >"$BUILD/contract.name"
-    echo "build/contract.o <- $name ($(stat -c %s "$BUILD/contract.o") bytes)"
+    printf '%s\n' "${names[@]}" >"$BUILD/contracts.txt"
+    for name in "${names[@]}"; do
+        echo "build/contracts/$name.o ($(stat -c %s "$BUILD/contracts/$name.o") bytes)"
+    done
 }
 
 require_contract() {
-    [[ -f "$BUILD/contract.o" ]] || die "no contract yet, run ./prova compile FILE.sol"
-    step "contract: $(cat "$BUILD/contract.name")"
+    [[ -f "$BUILD/contracts.txt" ]] || die "no contract yet, run ./prova compile FILE.sol"
+    step "contracts: $(paste -sd' ' "$BUILD/contracts.txt")"
 }
 
 host() {
@@ -122,15 +127,15 @@ host() {
     (cd "$ROOT" && cargo run --release -q -p prova-host -- "$@")
 }
 
-# Each test file names its contract on a `contract FILE.sol [NAME]` line.
+# Each test file names its contracts on `contract FILE.sol` lines.
 cmd_test() {
     local files=("$@") failed=() file contract
     [[ ${#files[@]} -gt 0 ]] || files=("$ROOT"/tests/*.test)
 
     for file in "${files[@]}"; do
         file="$(realpath "$file")"
-        read -ra contract < <(sed -n 's/#.*//; s/^contract[[:space:]]\+//p' "$file")
-        [[ ${#contract[@]} -ge 1 ]] || die "$file has no 'contract FILE.sol [NAME]' line"
+        mapfile -t contract < <(sed -n 's/#.*//; s/^contract[[:space:]]\+\([^[:space:]]*\).*/\1/p' "$file")
+        [[ ${#contract[@]} -ge 1 ]] || die "$file has no 'contract FILE.sol' line"
         (cd "$ROOT" && cmd_compile "${contract[@]}") >/dev/null
         file="$(realpath --relative-to="$ROOT" "$file")"
         step "test $file"
@@ -145,17 +150,16 @@ cmd_test() {
 
 cmd_inspect() {
     require_contract
-    local llvm nm objdump readelf
+    local llvm name object
     llvm="$(llvm_bin_dir)"
-    nm="$llvm/llvm-nm"
-    objdump="$llvm/llvm-objdump"
-    readelf="$llvm/llvm-readelf"
-
-    echo "symbols (T = exported to the guest, U = the guest must provide it):"
-    "$nm" "$BUILD/contract.o" | grep -E ' [TU] ' | sed 's/^/  /'
-    echo "ISA: $("$readelf" -A "$BUILD/contract.o" | grep -o 'rv64[a-z0-9_]*' | head -1)"
-    "$objdump" -d --no-show-raw-insn "$BUILD/contract.o" >"$BUILD/contract.s"
-    echo "disassembly: build/contract.s"
+    while read -r name; do
+        object="$BUILD/contracts/$name.o"
+        echo "$name: symbols (T = exported to the guest, W = weak, U = the guest must provide it):"
+        "$llvm/llvm-nm" "$object" | grep -E ' [TWU] ' | sed 's/^/  /'
+        echo "  ISA: $("$llvm/llvm-readelf" -A "$object" | grep -o 'rv64[a-z0-9_]*' | head -1)"
+        "$llvm/llvm-objdump" -d --no-show-raw-insn "$object" >"$BUILD/contracts/$name.s"
+        echo "  disassembly: build/contracts/$name.s"
+    done <"$BUILD/contracts.txt"
 }
 
 case "${1:-help}" in

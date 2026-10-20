@@ -2,6 +2,8 @@
 # a string key. Expected slots were computed with an independent keccak.
 contract contracts/mappings.sol
 
+deploy
+
 setNumber(uint256,uint256) 7 100
     storage 0xdc686ec4a0ff239c70e7c7c36e8f853eced3bc8618f48d2b816da2a74311237e = 100
     storage 0x0 = 100
