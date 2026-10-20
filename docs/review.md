@@ -1,5 +1,11 @@
 # Solang → SP1: review notes
 
+> This walkthrough describes the first version (one contract, four
+> `__sys_*` imports). Everything since — keccak and mappings, events, the
+> transaction context, string ABI, several contracts and calls between
+> them, the revm benchmark — is in `docs/log/` (one entry per change), and
+> the current interface is `docs/spec.md`.
+
 Branch `sp1-target` in `~/void/projects/solang`, plus this repository
 (`~/void/projects/prova`): `guest/`, `host/` and the `./prova` script.
 
