@@ -64,7 +64,7 @@ $ ./prova test        all 11 test files passed
 ## 6. Commits
 
 - Solang: none.
-- prova: filled in by the next commit.
+- prova: `448d728 hash public values with the sha-256 precompile in both guests`
 
 ## 7. Open issues / follow-ups
 
