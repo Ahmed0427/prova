@@ -158,9 +158,17 @@ fn show_storage(storage: &Storage) -> String {
     format!("{{{}}}", slots.join(", "))
 }
 
-/// Runs one step in SP1's executor: the public values, the guest's trace
-/// and the cycle count.
-fn run(prover: &CpuProver, step: &Step, storage: &Storage) -> (Public, String, u64) {
+/// One step run in SP1's executor.
+struct Run {
+    public: Public,
+    /// What the guest printed: one line per `__sys_*` call.
+    trace: String,
+    cycles: u64,
+    /// The syscalls other than I/O and halt, by name: the precompiles used.
+    syscalls: Vec<(String, u64)>,
+}
+
+fn run(prover: &CpuProver, step: &Step, storage: &Storage) -> Run {
     let (guest_stdout, log) = tokio::sync::watch::channel(String::new());
     let (values, report) = prover
         .execute(ELF, stdin(step, storage))
@@ -168,22 +176,42 @@ fn run(prover: &CpuProver, step: &Step, storage: &Storage) -> (Public, String, u
         .run()
         .unwrap_or_else(|err| fail(&format!("the guest failed: {err}")));
     let trace = log.borrow().clone();
-    (
-        Public::read(&values),
+    let syscalls = report
+        .syscall_counts
+        .iter()
+        .map(|(code, count)| (format!("{code:?}"), *count))
+        .filter(|(name, count)| *count > 0 && !IO_SYSCALLS.contains(&name.as_str()))
+        .collect();
+    Run {
+        public: Public::read(&values),
         trace,
-        report.total_instruction_count(),
-    )
+        cycles: report.total_instruction_count(),
+        syscalls,
+    }
+}
+
+const IO_SYSCALLS: [&str; 5] = ["WRITE", "HALT", "HINT_LEN", "HINT_READ", "COMMIT"];
+
+fn show_syscalls(syscalls: &[(String, u64)]) -> String {
+    let counts: Vec<_> = syscalls
+        .iter()
+        .map(|(name, count)| format!("{name} x{count}"))
+        .collect();
+    counts.join(", ")
 }
 
 fn execute(prover: &CpuProver, step: &Step, storage: &Storage) -> Public {
     println!("\n== {}", step.label);
     println!("  calldata        0x{}", hex(&step.calldata));
 
-    let (public, trace, cycles) = run(prover, step, storage);
-    print!("{trace}");
-    println!("  cycles          {cycles}");
-    public.print();
-    public
+    let run = run(prover, step, storage);
+    print!("{}", run.trace);
+    println!("  cycles          {}", run.cycles);
+    if !run.syscalls.is_empty() {
+        println!("  precompiles     {}", show_syscalls(&run.syscalls));
+    }
+    run.public.print();
+    run.public
 }
 
 /// Runs a test script; the steps share storage, as with `run`.
@@ -194,13 +222,14 @@ fn test(prover: &CpuProver, path: &str) -> bool {
     let mut storage = Storage::new();
     let mut passed = 0;
     for case in &cases {
-        let (public, trace, cycles) = run(prover, &case.step, &storage);
-        let failures = script::check(case, &public);
+        let run = run(prover, &case.step, &storage);
+        let failures = script::check(case, &run.public, &run.syscalls);
         if failures.is_empty() {
             passed += 1;
             println!(
-                "  ok    {:<50} {cycles:>9} cycles",
-                abbreviate(&case.step.label, 50)
+                "  ok    {:<50} {:>9} cycles",
+                abbreviate(&case.step.label, 50),
+                run.cycles
             );
         } else {
             println!("  FAIL  {} ({path}:{})", case.step.label, case.line);
@@ -208,10 +237,11 @@ fn test(prover: &CpuProver, path: &str) -> bool {
                 println!("        {failure}");
             }
             println!("  calldata        0x{}", hex(&case.step.calldata));
-            print!("{trace}");
-            public.print();
+            print!("{}", run.trace);
+            println!("  precompiles     {}", show_syscalls(&run.syscalls));
+            run.public.print();
         }
-        storage = public.storage_after;
+        storage = run.public.storage_after;
     }
     println!("{path}: {passed}/{} steps passed", cases.len());
     passed == cases.len()

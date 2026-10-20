@@ -27,6 +27,8 @@ pub enum Expect {
     Output(Vec<u8>),
     /// `storage SLOT = VALUE` after the step; 0 also matches a missing slot.
     Storage(Word, Word),
+    /// `syscall NAME COUNT`: how often a precompile ran, e.g. `KECCAK_PERMUTE`.
+    Syscall(String, u64),
 }
 
 pub fn parse(text: &str) -> Result<Vec<Case>, String> {
@@ -93,6 +95,16 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
                     parse_word(value).map_err(at)?,
                 ));
             }
+            "syscall" => {
+                let rest: Vec<&str> = words.collect();
+                let [name, count] = rest[..] else {
+                    return Err(at("write `syscall NAME COUNT`".into()));
+                };
+                let count = count
+                    .parse()
+                    .map_err(|_| at(format!("`{count}` is not a count")))?;
+                case.expect.push(Expect::Syscall(name.to_string(), count));
+            }
             other => return Err(at(format!("unknown expectation `{other}`"))),
         }
     }
@@ -100,7 +112,7 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
 }
 
 /// Every way the result differs from what the case expects.
-pub fn check(case: &Case, public: &Public) -> Vec<String> {
+pub fn check(case: &Case, public: &Public, syscalls: &[(String, u64)]) -> Vec<String> {
     let mut failures = Vec::new();
     if public.reverted != case.reverts {
         failures.push(format!(
@@ -133,6 +145,15 @@ pub fn check(case: &Case, public: &Public) -> Vec<String> {
                         short(&actual),
                         short(value)
                     ));
+                }
+            }
+            Expect::Syscall(name, count) => {
+                let actual = syscalls
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map_or(0, |(_, c)| *c);
+                if actual != *count {
+                    failures.push(format!("{name} ran {actual} times, expected {count}"));
                 }
             }
             _ => {}

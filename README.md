@@ -94,6 +94,7 @@ nope()
 | `returns WORD...` | the output is exactly these 32-byte words (none: empty) |
 | `output 0xHEX` | the output is exactly these bytes |
 | `storage SLOT = VALUE` | after the step; `0` also matches a slot never written |
+| `syscall NAME COUNT` | an SP1 precompile ran exactly COUNT times, e.g. `KECCAK_PERMUTE` |
 
 Steps share storage, as with `run`. `#` starts a comment. On a failure the
 step's guest trace is printed and the command exits non-zero.
@@ -108,6 +109,7 @@ revert semantics, input and public values) is in [docs/spec.md](docs/spec.md).
 ```
 T solang_deploy, solang_call      the contract's entry points (ptr, len)
 U __sys_sload, __sys_sstore       storage, a slot and a value as 4×u64 limbs each
+U __sys_keccak256                 keccak256, for hashing and mapping slots
 U __sys_return, __sys_revert      end of the transaction
 ```
 
@@ -155,7 +157,7 @@ docs/review.md  a longer walkthrough of the Solang side and the design
   `target/riscv` with other flags, and `make` won't notice the difference.
 - **One contract at a time.** `build/contract.o` is linked into the guest, so
   compiling another contract rebuilds the guest.
-- **What's not supported yet:** mappings, `keccak256`, `string`/`bytes`,
+- **What's not supported yet:** storage arrays, `string`/`bytes`,
   dynamic arrays, events, `msg.sender`, external calls. Using them makes
   Solang panic with `unimplemented`.
 - **Known deviations from solc:** trailing calldata reverts, and
