@@ -195,7 +195,7 @@ $ cargo test --test riscv  ok. 5 passed
 ## 6. Commits
 
 - Solang: `a7849c2a make riscv shift helpers weak so several contracts link together`
-- prova: filled in by the next commit.
+- prova: `26379da link several contracts into the guest with an address registry`
 
 ## 7. Open issues / follow-ups
 

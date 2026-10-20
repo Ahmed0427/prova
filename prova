@@ -89,7 +89,7 @@ cmd_compile() {
     local file out objcopy names=() name i=0
     objcopy="$(llvm_bin_dir)/llvm-objcopy"
 
-    rm -rf "$BUILD/out" "$BUILD/contracts"
+    rm -rf "$BUILD/out" "$BUILD/contracts" "$BUILD/contracts.txt"
     mkdir -p "$BUILD/contracts"
     for file in "$@"; do
         [[ -f "$file" ]] || die "$file not found"

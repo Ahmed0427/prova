@@ -37,7 +37,8 @@ contracts/*.sol --solang--> build/contracts/*.o --link--> guest --SP1--> public 
 - **Contract ABI with the guest** (the object must have exactly this interface):
   - exports `solang_deploy(ptr, len)` and `solang_call(ptr, len)` (renamed per contract at link time); the shift helpers `__ashlti3` etc. are weak;
   - imports `__sys_sload`, `__sys_sstore`, `__sys_keccak256`, `__sys_return`, `__sys_revert` (see `docs/spec.md` for the full list), defined in `guest/src/main.rs`. These are ordinary C-ABI function calls into Rust, **not** SP1 syscalls. 256-bit slots/values are passed as four `u64` limbs, least significant first (`to_word`/`to_limbs`).
-  - `__sys_return`/`__sys_revert` never return: they commit and call `syscall_halt`. Reaching the end of `main` is `unreachable!`.
+  - `__sys_return`/`__sys_revert` never return to the contract: they end the current call frame. The guest's `prova_enter`/`prova_leave` (`global_asm!` in `guest/src/main.rs`, a setjmp/longjmp over ra/sp/s0-s11) bring control back to the `run()` that entered the frame; frames skipped that way must own nothing that needs `Drop`. Storage writes go through a journal that a reverted frame rolls back; logs are truncated likewise. `main` commits after the outermost frame ends.
+  - `__sys_call`/`__sys_staticcall`/`__sys_delegatecall` + `__sys_returndata_size/copy`: calls between linked contracts (0 = returned, 1 = reverted). Static frames reject `sstore`/`log`.
 - **Transaction flow in the guest:** read one `prova_common::Input` (context, deploy: Option<name>, calldata, state: accounts of address/code name/storage) → deploy at or call `context.address` → at `__sys_return`/`__sys_revert` commit one `prova_common::Public` (inputs + reverted, output, logs, state_after; on revert no logs and state_after = state_before). Storage is one `BTreeMap<(Address, Word), Word>`.
 - **Shared types:** `common/` (`prova-common`, `no_std` + serde) defines `Input`, `Context`, `Public`; both guest and host depend on it by path, so the input/public-values format has one definition. The host's `prove` path forges a copy by flipping `reverted` to demonstrate verification rejects tampering.
 - **Context:** `--from/--value/--to/--block/--timestamp` before the steps set defaults; at the start of a step string they apply to that step (also in test files). Unauthenticated: only made public.
@@ -46,8 +47,9 @@ contracts/*.sol --solang--> build/contracts/*.o --link--> guest --SP1--> public 
 ## Gotchas
 
 - Proving needs a lot of RAM (did not finish on 14 GB). Execution (`run`) is cheap after the first `sp1-sdk` build.
-- Re-run `./prova setup` after switching Solang branches: the r55 branch builds `target/riscv` with different flags and `make` won't notice.
+- Re-run `./prova setup` after switching Solang branches: the r55 branch builds `target/riscv` with different flags and `make` won't notice. Also after editing `stdlib/*.c` in Solang: Solang's `build.rs` has no `rerun-if-changed` for the stdlib, so `cargo build` keeps the old bitcode (`make -C stdlib` fixes it).
+- `__init_heap` is idempotent on riscv (re-entrant calls share a contract's heap); memory a frame allocated is not freed when it ends.
 - The guest's `tiny-keccak` is patched to SP1's fork (`guest/Cargo.toml`), which runs the keccak precompile; `tests/mappings.test` checks `KECCAK_PERMUTE` counts.
-- Unsupported Solidity features (Solang panics with `unimplemented`): storage arrays and strings, dynamic arrays in the ABI, `abi.encodePacked`, external calls, indexed event fields of reference types.
+- Unsupported Solidity features (Solang panics with `unimplemented`): storage arrays and strings, dynamic arrays in the ABI, `abi.encodePacked`, `new C()`, indexed event fields of reference types.
 - Known deviations from solc: `type(intN).min / -1` reverts even in `unchecked`. RISC-V never traps on arithmetic, so every check wasm gets "for free" from a trap must be emitted explicitly (see log 003).
 - Starting state is host-supplied and only made public, not proven to be real chain state.
