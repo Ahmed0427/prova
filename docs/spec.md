@@ -100,8 +100,8 @@ A selector is written as 4 raw bytes before the tuple (calldata, `Error`,
 - **Byte strings** are `(const uint8_t *ptr, uint64_t len)`. `ptr` may be
   `NULL` when `len == 0`. The memory belongs to the contract and is valid
   only during the call; a runtime that keeps the bytes must copy them.
-- **Addresses** (planned imports) are 20 bytes, big-endian, as Solang keeps
-  `address` in memory.
+- **Addresses** are 20 bytes, big-endian, as Solang keeps `address` in
+  memory.
 - Imports are plain function calls in the SP1 guest (Rust `extern "C"`), not
   SP1 syscalls. Another runtime may implement them as `ecall` stubs.
 - An import other than `__sys_return`/`__sys_revert` returns normally.
@@ -342,16 +342,19 @@ that `state_before` is real chain state or that `context` is a real
 transaction. The code name in an account is meaningful only together with
 the verifying key: the key fixes which object each name runs.
 
+SP1 hashes the committed bytes with SHA-256 for the proof; both guests use
+SP1's patched `sha2`, so that is the SHA-256 precompile (log 013).
+
 Planned later: hashes or state roots in place of full state and logs
 (log 006).
 
-## 6. Planned compiler-side semantics
+## 6. Compiler-side storage semantics
 
-| Item | Plan | Phase |
-|---|---|---|
-| mapping slot | implemented (§3.2) | 1 |
-| dynamic array / string storage | as solc: length at `p`, data from `keccak256(p)` | 1 (as needed by ERC-20) |
-| storage packing | decided: one slot per value, no packing (log 004) | 1 |
+| Item | Status |
+|---|---|
+| mapping slots, solc's | implemented (§3.2, log 004) |
+| storage packing | decided: one slot per value, no packing (log 004) |
+| storage arrays, `string`/`bytes` in storage | not implemented; if added, as solc (length at `p`, data from `keccak256(p)`; short strings inline). The ERC-20 doesn't need them (constant `name`/`symbol`, log 008) |
 
 ## 7. Multiple contracts — implemented (log 009)
 

@@ -64,7 +64,7 @@ Cost figures are from `docs/benchmarks.md`.
 ## 6. Commits
 
 - Solang: none.
-- prova: filled in by the next commit (or see `git log` for this file).
+- prova: `74048a3 add a design note for legacy evm calls and gas metering`
 
 ## 7. Open issues / follow-ups
 
