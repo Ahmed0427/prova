@@ -66,15 +66,19 @@ Calldata and return data are the Ethereum ABI.
 |---|---|
 | value types (`uintN`, `intN`, `bool`, `address`, `bytesN`, enums, user value types) | implemented |
 | fixed-size arrays and structs of the above (inline) | implemented |
-| `string`, `bytes`, dynamic arrays (offset + length encoding) | planned (phase 1) |
+| `string`, `bytes` (offset in the head; length + zero-padded data in the tail) | implemented, as top-level arguments and return values (log 007) |
+| dynamic arrays `T[]`, structs or fixed arrays containing `string`/`bytes` | not implemented |
+| `abi.encodePacked` | not implemented (stops compilation) |
 | external function types | not planned |
 
-Decoding is strict, like solc: each argument word must be canonical
-(`widen(decoded) == word`, enum `< variants`), and calldata shorter than the
-static size of the arguments reverts with empty data.
+Decoding is checked like solc, and every failure reverts with **empty** data:
+calldata shorter than the head; a dynamic value's offset or length pointing
+past the end; a non-canonical value word (`widen(decoded) != word`, enum
+`>= variants`). Trailing bytes after the arguments are ignored, and any
+offset inside the buffer is accepted, as in solc.
 
-**Deviation from solc:** calldata *longer* than the arguments reverts with
-`Panic(0)`; solc ignores trailing bytes. (Known, not yet fixed.)
+A selector is written as 4 raw bytes before the tuple (calldata, `Error`,
+`Panic`, custom errors, `abi.encodeWithSelector/Signature/Call`).
 
 ## 3. Imports (`__sys_*`)
 
@@ -198,7 +202,7 @@ _Noreturn void __sys_revert(const uint8_t *data, uint64_t len);
 
 | Cause | Revert data |
 |---|---|
-| unknown selector, short calldata, non-canonical argument | empty |
+| unknown selector, malformed calldata (§2), value sent to a non-payable function | empty |
 | `require(cond)`, `revert()` | empty |
 | `assert(false)` | `Panic(1)`: `0x4e487b71` + word `0x01` |
 | arithmetic overflow | `Panic(0x11)` |
@@ -206,7 +210,8 @@ _Noreturn void __sys_revert(const uint8_t *data, uint64_t len);
 | division or modulo by zero | `Panic(0x12)` |
 | `type(intN).min / -1` | `Panic(0x11)`, also inside `unchecked { }` (solc wraps there; see log 003) |
 | out of heap | empty |
-| `require(cond, "msg")`, `revert("msg")`, custom errors with dynamic fields | not compiled yet: needs `string` encoding (planned, phase 1) |
+| `require(cond, "msg")`, `revert("msg")` | `Error(string)`: `0x08c379a0` + the ABI encoding of the message |
+| custom errors `revert E(...)` | `selector(E)` + the ABI encoding of the fields |
 
 Neither function returns. The compiler emits `unreachable` after the call.
 

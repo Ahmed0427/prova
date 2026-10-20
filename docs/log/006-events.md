@@ -201,7 +201,7 @@ $ cargo test --test riscv      test result: ok. 4 passed (new: events_import_log
 ## 6. Commits
 
 - Solang: `6adc7552 emit ethereum-style events through a log syscall on riscv`
-- prova: filled in by the next commit.
+- prova: `809fc8c add log syscall and commit events in the public values`
 
 ## 7. Open issues / follow-ups
 

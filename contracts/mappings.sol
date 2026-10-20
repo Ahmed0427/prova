@@ -13,7 +13,7 @@ contract mappings {
 	mapping(bytes4 => bool) public flags;
 	mapping(int8 => uint8) public bySigned;
 	mapping(uint256 => Point) public points;
-	mapping(string => uint256) private byName;
+	mapping(string => uint256) public byName;
 
 	function setNumber(uint256 key, uint256 value) public {
 		byNumber[key] = value;

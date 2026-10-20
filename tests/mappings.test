@@ -49,6 +49,11 @@ setAlice(uint256) 42
     storage 0xa478e43b88f0bf0999792486cdb85c44a79ae39db2de1d4da061e8d73f2e6ba9 = 42
 alice()
     returns 42
+# The getter takes the key as a string argument.
+byName(string) "alice"
+    returns 42
+byName(string) "bob"
+    returns 0
 
 hashWord(uint256) 1
     returns 0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6

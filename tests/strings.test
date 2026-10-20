@@ -1,0 +1,54 @@
+# string and bytes in the Ethereum ABI: an offset in the head, then length and
+# zero-padded data in the tail. "text" is a string value, hex"..." a bytes value.
+contract contracts/strings.sol
+
+name()
+    returns "Prova Token"
+echo(string) "hello world"
+    returns "hello world"
+echo(string) ""
+    returns ""
+echoBytes(bytes) hex"00ff10"
+    returns hex"00ff10"
+long()
+    returns "a string longer than thirty-two bytes, so it needs two words"
+mixed(uint8,string,uint256,bytes) 7 "hi" 9 hex"abcd"
+    returns 9 "hi" 7 hex"abcd"
+length(string) "four"
+    returns 4
+hash(string) "hello"
+    returns 0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8
+
+# require with a message reverts with Error(string).
+check(uint256) 3
+    returns 3
+check(uint256) 30
+    reverts
+    output 0x08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000007746f6f2062696700000000000000000000000000000000000000000000000000
+
+# Malformed calldata reverts with empty data, as in solc.
+# A length past the end:
+echo(string) 0x20 5
+    reverts
+    output 0x
+# An offset past the end, and a huge one:
+echo(string) 0x1000
+    reverts
+    output 0x
+echo(string) -1
+    reverts
+    output 0x
+# A huge length:
+echo(string) 0x20 -1
+    reverts
+    output 0x
+# No head at all:
+echo(string)
+    reverts
+    output 0x
+# Any offset inside the buffer is accepted, as in solc:
+echo(string) 0x40 0 3 0x6869210000000000000000000000000000000000000000000000000000000000
+    returns "hi!"
+# Trailing bytes are ignored, as in solc.
+check(uint256) 3 4
+    returns 3
