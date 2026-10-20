@@ -21,6 +21,7 @@ usage: ./prova COMMAND
   compile FILE.sol [NAME]   compile a contract to build/contract.o
   run STEP...               execute transactions in SP1, one after another
   prove STEP...             execute all steps but the last, then prove the last one
+  test [FILE...]            run test scripts (default: tests/*.test)
   inspect                   symbols, ISA and disassembly of build/contract.o
   clean                     remove build/
 
@@ -121,6 +122,27 @@ host() {
     (cd "$ROOT" && cargo run --release -q -p prova-host -- "$@")
 }
 
+# Each test file names its contract on a `contract FILE.sol [NAME]` line.
+cmd_test() {
+    local files=("$@") failed=() file contract
+    [[ ${#files[@]} -gt 0 ]] || files=("$ROOT"/tests/*.test)
+
+    for file in "${files[@]}"; do
+        file="$(realpath "$file")"
+        read -ra contract < <(sed -n 's/#.*//; s/^contract[[:space:]]\+//p' "$file")
+        [[ ${#contract[@]} -ge 1 ]] || die "$file has no 'contract FILE.sol [NAME]' line"
+        (cd "$ROOT" && cmd_compile "${contract[@]}") >/dev/null
+        file="$(realpath --relative-to="$ROOT" "$file")"
+        step "test $file"
+        (cd "$ROOT" && cargo run --release -q -p prova-host -- --test "$file") || failed+=("$file")
+    done
+
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        die "failed: ${failed[*]}"
+    fi
+    echo "all ${#files[@]} test files passed"
+}
+
 cmd_inspect() {
     require_contract
     local llvm nm objdump readelf
@@ -141,6 +163,7 @@ setup) shift; cmd_setup "$@" ;;
 compile) shift; cmd_compile "$@" ;;
 run) shift; host "$@" ;;
 prove) shift; host --prove "$@" ;;
+test) shift; cmd_test "$@" ;;
 inspect) shift; cmd_inspect ;;
 clean) rm -rf "$BUILD" ;;
 help | -h | --help) usage ;;

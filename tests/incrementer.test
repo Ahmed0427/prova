@@ -1,0 +1,27 @@
+# The constructor, a write, a read, and an unknown selector.
+contract contracts/incrementer.sol
+
+deploy 5
+    storage 0x0 = 5
+
+inc(uint32) 5
+    returns
+    storage 0x0 = 10
+
+get()
+    returns 10
+
+# No such function: the dispatcher reverts and storage is untouched.
+nope()
+    reverts
+    output 0x
+    storage 0x0 = 10
+
+# A uint32 argument with high bits set is not canonical ABI.
+inc(uint32) 0x100000000
+    reverts
+    storage 0x0 = 10
+
+# Calldata shorter than the arguments.
+inc(uint32)
+    reverts

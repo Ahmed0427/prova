@@ -1,0 +1,62 @@
+# Every value type: its storage word, its ABI word, and the canonical-input checks.
+contract contracts/storage_types.sol
+
+# Initializers run before the (empty) constructor, one slot per value.
+deploy
+    storage 0x0 = 1
+    storage 0x1 = 0xdead
+    storage 0x2 = 0xffffffffffffffd6
+    storage 0x3 = 0xcafebabe
+    storage 0x4 = 2
+    storage 0x5 = 1000
+    storage 0x6 = 0x8000000000000000000000000000000000000000000000000000000000000001
+
+flag()
+    returns true
+owner()
+    returns 0xdead
+# int64 is sign-extended in the ABI, but kept as 8 bytes in its slot.
+signed()
+    returns -42
+# bytesN is left-aligned in the ABI, right-aligned in storage.
+tag()
+    returns 0xcafebabe00000000000000000000000000000000000000000000000000000000
+color()
+    returns 2
+price()
+    returns 1000
+big()
+    returns 0x8000000000000000000000000000000000000000000000000000000000000001
+
+set(bool,address,int64,bytes4,uint8,uint64,uint256) false 0xabcd -1 0x1234567800000000000000000000000000000000000000000000000000000000 1 7 8
+    returns
+    storage 0x0 = 0
+    storage 0x1 = 0xabcd
+    storage 0x2 = 0xffffffffffffffff
+    storage 0x3 = 0x12345678
+    storage 0x4 = 1
+    storage 0x5 = 7
+    storage 0x6 = 8
+signed()
+    returns -1
+
+# Not canonical: an enum out of range, a bool of 2, an int64 that is not
+# sign-extended, bytes4 with low bytes set, an address with high bytes set.
+set(bool,address,int64,bytes4,uint8,uint64,uint256) false 0xabcd -1 0x1234567800000000000000000000000000000000000000000000000000000000 3 7 8
+    reverts
+    storage 0x4 = 1
+set(bool,address,int64,bytes4,uint8,uint64,uint256) 2 0xabcd -1 0x1234567800000000000000000000000000000000000000000000000000000000 1 7 8
+    reverts
+set(bool,address,int64,bytes4,uint8,uint64,uint256) false 0xabcd 0xffffffffffffffff 0x1234567800000000000000000000000000000000000000000000000000000000 1 7 8
+    reverts
+set(bool,address,int64,bytes4,uint8,uint64,uint256) false 0xabcd -1 0x12345678ff 1 7 8
+    reverts
+set(bool,address,int64,bytes4,uint8,uint64,uint256) false 0x10000000000000000000000000000000000000000 -1 0x1234567800000000000000000000000000000000000000000000000000000000 1 7 8
+    reverts
+
+clear()
+    storage 0x0 = 0
+    storage 0x1 = 0
+    storage 0x6 = 0
+flag()
+    returns false
