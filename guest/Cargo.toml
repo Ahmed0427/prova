@@ -10,6 +10,8 @@ prova-common = { path = "../common" }
 
 [workspace]
 
-# SP1's tiny-keccak runs the permutation as the keccak precompile.
+# SP1's tiny-keccak runs the permutation as the keccak precompile; its sha2
+# hashes the public values with the SHA-256 precompiles.
 [patch.crates-io]
 tiny-keccak = { git = "https://github.com/sp1-patches/tiny-keccak", tag = "patch-2.0.2-sp1-6.2.0" }
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", tag = "patch-sha2-0.10.9-sp1-6.0.0", package = "sha2" }

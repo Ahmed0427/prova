@@ -18,3 +18,4 @@ the real diff, verification, commits, and open issues.
 | [010](010-nested-calls.md) | calls between contracts: `__sys_call` family, per-frame journal, setjmp-style unwinding, re-entrant heap, try/catch | 2 |
 | [011](011-abi-length-panic.md) | oversized dynamic ABI length reverts with `Panic(0x41)`, found by comparing with revm | 3 |
 | [012](012-benchmark-harness.md) | `./prova bench`: revm guest with the same steps, cycle regions, trace switch, differential findings | 3 |
+| [013](013-sha2-precompile.md) | both guests hash the public values with the SHA-256 precompiles (patched `sha2`) | 3 |
