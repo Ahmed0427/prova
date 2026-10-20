@@ -227,6 +227,7 @@ host/           runs the guest: execute, or prove and verify
 build/          compiler output (git-ignored)
 docs/spec.md    the interface between a contract object and its runtime
 docs/benchmarks.md  native vs revm cycles, and how to reproduce them
+docs/design-legacy-evm-and-gas.md  design: calling legacy EVM contracts, gas metering
 docs/log/       one entry per change: what, why, decisions, verification
 docs/review.md  a longer walkthrough of the Solang side and the design
 ```
