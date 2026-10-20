@@ -55,6 +55,7 @@ The `sload`/`sstore`/`return` lines are the contract calling into the guest.
 | `./prova compile FILE.sol [NAME]` | Compiles with `--target riscv` and copies the object to `build/contract.o`. If the file has several contracts, pass `NAME`. |
 | `./prova run STEP...` | Executes the steps in SP1, in order. Each step starts from the storage the previous one left. |
 | `./prova prove STEP...` | Executes every step except the last, proves the last one, verifies the proof, then shows that a tampered copy is rejected. |
+| `./prova test [FILE...]` | Runs test scripts, by default every `tests/*.test`. See [Tests](#tests). |
 | `./prova inspect` | Prints the object's symbols and instruction set, and writes its disassembly to `build/contract.s`. |
 | `./prova clean` | Removes `build/`. |
 
@@ -69,6 +70,33 @@ Each `ARG` is a single 32-byte ABI word: `42`, `-1`, `true`, `false` or
 `0xHEX`. Hex is right-aligned like a number, so for `bytesN` arguments write
 the full word: `bytes4 0xcafebabe` is
 `0xcafebabe00000000000000000000000000000000000000000000000000000000`.
+
+## Tests
+
+`./prova test` runs every `tests/*.test` file. A test file names its
+contract, then lists steps; the indented lines under a step say what its
+result must be:
+
+```
+contract contracts/incrementer.sol
+
+deploy 5
+    storage 0x0 = 5
+get()
+    returns 5
+nope()
+    reverts
+```
+
+| Expectation | Meaning |
+|---|---|
+| `reverts` | the step reverts (without it, the step must succeed) |
+| `returns WORD...` | the output is exactly these 32-byte words (none: empty) |
+| `output 0xHEX` | the output is exactly these bytes |
+| `storage SLOT = VALUE` | after the step; `0` also matches a slot never written |
+
+Steps share storage, as with `run`. `#` starts a comment. On a failure the
+step's guest trace is printed and the command exits non-zero.
 
 ## How it works
 
@@ -106,9 +134,11 @@ The host supplies it, and the proof only makes it public.
 ```
 prova           the script
 contracts/      example contracts
+tests/          test scripts for ./prova test
 guest/          the SP1 program; links build/contract.o
 host/           runs the guest: execute, or prove and verify
 build/          compiler output (git-ignored)
+docs/log/       one entry per change: what, why, decisions, verification
 docs/review.md  a longer walkthrough of the Solang side and the design
 ```
 
