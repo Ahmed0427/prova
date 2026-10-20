@@ -117,6 +117,8 @@ nope()
 | `output 0xHEX` | the output is exactly these bytes |
 | `storage SLOT = VALUE` | after the step; `0` also matches a slot never written |
 | `syscall NAME COUNT` | an SP1 precompile ran exactly COUNT times, e.g. `KECCAK_PERMUTE` |
+| `log [SIG] TOPIC... [data WORD...]` | the next event; `SIG` like `Transfer(address,address,uint256)` stands for topic 0 (its keccak256). With any `log` line, the number of events must match too |
+| `logs N` | exactly N events |
 
 Steps share storage, as with `run`. `#` starts a comment. On a failure the
 step's guest trace is printed and the command exits non-zero.
@@ -132,6 +134,7 @@ revert semantics, input and public values) is in [docs/spec.md](docs/spec.md).
 T solang_deploy, solang_call      the contract's entry points (ptr, len)
 U __sys_sload, __sys_sstore       storage, a slot and a value as 4×u64 limbs each
 U __sys_keccak256                 keccak256, for hashing and mapping slots
+U __sys_log                       events (topics + data)
 U __sys_caller, __sys_callvalue,  the transaction context
   __sys_address, __sys_block_number, __sys_timestamp
 U __sys_return, __sys_revert      end of the transaction
@@ -148,8 +151,8 @@ One SP1 run is one transaction:
 1. Read `(context, deploy, calldata, storage)` from the host.
 2. Call `solang_deploy` or `solang_call`.
 3. On `__sys_return` or `__sys_revert`, commit the inputs together with
-   `(reverted, output, storage after)`; after a revert, storage after is the
-   storage before. Then halt.
+   `(reverted, output, logs, storage after)`; after a revert there are no
+   logs and storage after is the storage before. Then halt.
 
 The committed bytes are the public values. A proof says "this guest, with this
 contract linked in, produced these public values". Changing any of them makes
@@ -184,7 +187,7 @@ docs/review.md  a longer walkthrough of the Solang side and the design
 - **One contract at a time.** `build/contract.o` is linked into the guest, so
   compiling another contract rebuilds the guest.
 - **What's not supported yet:** storage arrays, `string`/`bytes`,
-  dynamic arrays, events, external calls. Using them makes
+  dynamic arrays, external calls. Using them makes
   Solang panic with `unimplemented`.
 - **Known deviations from solc:** trailing calldata reverts, and
   `min / -1` reverts even in `unchecked`. See `docs/spec.md`.

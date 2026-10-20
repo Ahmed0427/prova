@@ -11,7 +11,7 @@ Status tags: **implemented** (the compiler emits it and the SP1 guest
 provides it), **planned** (proposed here; the signature is final only once
 its log entry in `docs/log/` lands and the tag changes).
 
-Interface version: **2** (adds the context imports, log 005).
+Interface version: **3** (adds `__sys_log`, log 006).
 
 ## 1. Object file
 
@@ -165,7 +165,26 @@ In the SP1 guest the context comes from the host (§4) and is
 timestamp. The proof only makes them public (§5), so a verifier knows which
 sender the result is for, but must trust whoever chose it.
 
-### 3.5 End of execution — implemented
+### 3.5 Events — implemented
+
+```c
+void __sys_log(const uint8_t *data, uint64_t len,
+               const uint8_t *topics, uint64_t n_topics);
+```
+
+One event. `topics` points to `n_topics` 32-byte words next to each other
+(`n_topics ≤ 4`, unaligned); `data` is its data. The runtime records it with
+the emitting contract's address. Events emitted by an execution that
+reverts are discarded.
+
+What the compiler passes, as on Ethereum: topic 0 is `keccak256` of the
+event signature unless the event is `anonymous`; each `indexed` field is
+one topic holding its 32-byte ABI word, in order; `data` is the ABI encoding
+of the non-indexed fields, in order (empty if none). Indexed fields of
+reference types (`string`, `bytes`, arrays, structs; Ethereum puts their
+hash in the topic) don't compile yet.
+
+### 3.6 End of execution — implemented
 
 ```c
 _Noreturn void __sys_return(const uint8_t *data, uint64_t len);
@@ -196,14 +215,13 @@ ends the transaction. With nested calls (planned, phase 2) `__sys_revert`
 ends only the current call frame: it discards that frame's writes and
 returns failure to the caller; only a top-level revert ends the transaction.
 
-### 3.6 Planned imports
+### 3.7 Planned imports
 
 Proposed signatures. Each will be settled, with the options considered, in
 its log entry.
 
 | Import | Proposed signature | Solidity | Phase |
 |---|---|---|---|
-| `__sys_log` | `void (const uint8_t *data, uint64_t len, const uint8_t *topics, uint64_t n_topics)` — `topics` is `n_topics × 32` big-endian bytes, `n_topics ≤ 4` | `emit E(...)` | 1 |
 | `__sys_call` | `uint64_t (const uint8_t addr[20], const uint64_t value[4], const uint8_t *input, uint64_t len)` → 0 success, 1 revert | external calls | 2 |
 | `__sys_returndata_size` / `__sys_returndata_copy` | `uint64_t (void)` / `void (uint8_t *dest, uint64_t offset, uint64_t len)` | return data of the last call | 2 |
 
@@ -248,18 +266,24 @@ struct Public {
     storage_before: Vec<(Word, Word)>, // as given
     reverted: bool,
     output: Vec<u8>,               // return or revert data
+    logs: Vec<Log>,                // events in emission order; empty on revert
     storage_after: Vec<(Word, Word)>,  // the final map, sorted by slot; = storage_before on revert
+}
+struct Log {
+    address: [u8; 20],             // the emitting contract (context.address)
+    topics: Vec<[u8; 32]>,         // ≤ 4
+    data: Vec<u8>,
 }
 ```
 
 A proof attests: this program (guest + linked contract, fixed by the
 verifying key) run on input `(context, deploy, calldata, storage_before)`
-produced `(reverted, output, storage_after)`. It does **not** attest that
+produced `(reverted, output, logs, storage_after)`. It does **not** attest that
 `storage_before` is real chain state or that `context` is a real
 transaction.
 
-Planned (phase 1): the logs, or their hash. Planned later: hashes or state
-roots in place of full storage.
+Planned later: hashes or state roots in place of full storage and logs
+(log 006 explains why the logs are committed in full for now).
 
 ## 6. Planned compiler-side semantics
 

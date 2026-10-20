@@ -13,7 +13,7 @@
 //!
 //! A step must succeed unless it is followed by `reverts`.
 
-use crate::{default_context, hex, parse_step, parse_word, short, Step};
+use crate::{default_context, hex, keccak256, parse_step, parse_word, short, Step};
 use prova_common::{Public, Word};
 
 pub struct Case {
@@ -30,6 +30,11 @@ pub enum Expect {
     Storage(Word, Word),
     /// `syscall NAME COUNT`: how often a precompile ran, e.g. `KECCAK_PERMUTE`.
     Syscall(String, u64),
+    /// `logs N`: the number of events.
+    Logs(usize),
+    /// `log [SIGNATURE] TOPIC... [data WORD...]`: the next event. A signature
+    /// like `Transfer(address,address,uint256)` stands for its keccak256.
+    Log(Vec<Word>, Vec<u8>),
 }
 
 pub fn parse(text: &str) -> Result<Vec<Case>, String> {
@@ -106,6 +111,28 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
                     .map_err(|_| at(format!("`{count}` is not a count")))?;
                 case.expect.push(Expect::Syscall(name.to_string(), count));
             }
+            "logs" => {
+                let count = words.next().unwrap_or("");
+                let count = count
+                    .parse()
+                    .map_err(|_| at(format!("`{count}` is not a count")))?;
+                case.expect.push(Expect::Logs(count));
+            }
+            "log" => {
+                let (mut topics, mut data, mut in_data) = (Vec::new(), Vec::new(), false);
+                for word in words {
+                    if word == "data" {
+                        in_data = true;
+                    } else if in_data {
+                        data.extend_from_slice(&parse_word(word).map_err(at)?);
+                    } else if word.contains('(') {
+                        topics.push(keccak256(word.as_bytes()));
+                    } else {
+                        topics.push(parse_word(word).map_err(at)?);
+                    }
+                }
+                case.expect.push(Expect::Log(topics, data));
+            }
             other => return Err(at(format!("unknown expectation `{other}`"))),
         }
     }
@@ -126,8 +153,40 @@ pub fn check(case: &Case, public: &Public, syscalls: &[(String, u64)]) -> Vec<St
             }
         ));
     }
+    // `log` lines list the events in order, and imply their count.
+    let mut next_log = 0;
+    let expected_logs = case
+        .expect
+        .iter()
+        .filter(|e| matches!(e, Expect::Log(..)))
+        .count();
+    if expected_logs > 0 && expected_logs != public.logs.len() {
+        failures.push(format!(
+            "{} events, expected {expected_logs}",
+            public.logs.len()
+        ));
+    }
     for expect in &case.expect {
         match expect {
+            Expect::Logs(count) if *count != public.logs.len() => {
+                failures.push(format!("{} events, expected {count}", public.logs.len()))
+            }
+            Expect::Log(topics, data) => {
+                if let Some(log) = public.logs.get(next_log) {
+                    if log.topics != *topics || log.data != *data {
+                        let show = |topics: &[Word], data: &[u8]| {
+                            let topics: Vec<_> = topics.iter().map(short).collect();
+                            format!("[{}] 0x{}", topics.join(", "), hex(data))
+                        };
+                        failures.push(format!(
+                            "event {next_log} is {}, expected {}",
+                            show(&log.topics, &log.data),
+                            show(topics, data)
+                        ));
+                    }
+                }
+                next_log += 1;
+            }
             Expect::Output(output) if *output != public.output => failures.push(format!(
                 "output is 0x{}, expected 0x{}",
                 hex(&public.output),

@@ -39,6 +39,16 @@ pub struct Input {
     pub storage: Storage,
 }
 
+/// An event, as on Ethereum.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Log {
+    /// The contract that emitted it.
+    pub address: Address,
+    /// At most 4.
+    pub topics: Vec<Word>,
+    pub data: Vec<u8>,
+}
+
 /// The guest's only commit: the public values a proof attests to.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Public {
@@ -49,6 +59,8 @@ pub struct Public {
     pub reverted: bool,
     /// Return data, or revert data.
     pub output: Vec<u8>,
+    /// The events emitted, in order; none after a revert.
+    pub logs: Vec<Log>,
     /// Sorted by slot; equal to `storage_before` after a revert.
     pub storage_after: Storage,
 }
