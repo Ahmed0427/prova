@@ -100,6 +100,9 @@ step's guest trace is printed and the command exits non-zero.
 
 ## How it works
 
+The exact interface (entry points, every `__sys_*` import, word layout,
+revert semantics, input and public values) is in [docs/spec.md](docs/spec.md).
+
 `./prova compile` produces an object file with exactly this interface:
 
 ```
@@ -138,6 +141,7 @@ tests/          test scripts for ./prova test
 guest/          the SP1 program; links build/contract.o
 host/           runs the guest: execute, or prove and verify
 build/          compiler output (git-ignored)
+docs/spec.md    the interface between a contract object and its runtime
 docs/log/       one entry per change: what, why, decisions, verification
 docs/review.md  a longer walkthrough of the Solang side and the design
 ```
@@ -154,3 +158,5 @@ docs/review.md  a longer walkthrough of the Solang side and the design
 - **What's not supported yet:** mappings, `keccak256`, `string`/`bytes`,
   dynamic arrays, events, `msg.sender`, external calls. Using them makes
   Solang panic with `unimplemented`.
+- **Known deviations from solc:** division by zero doesn't revert (it
+  returns all-ones), and trailing calldata reverts. See `docs/spec.md`.

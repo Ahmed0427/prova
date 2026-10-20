@@ -178,8 +178,11 @@ Solang is unchanged in this entry. `cargo clippy -p prova-host`: clean.
 
 ## 6. Commits
 
-- prova: see `git log` for `add test scripts and ./prova test` (this entry is
-  part of that commit, so it cannot contain its own hash; entry 002 records it).
+- prova: `89cffe0 add test scripts and ./prova test`
+- Solang: none.
+
+(An entry is committed with its change, so it cannot hold its own hash; the
+hash is filled in by the next commit.)
 
 ## 7. Open issues / follow-ups
 

@@ -7,3 +7,4 @@ the real diff, verification, commits, and open issues.
 | # | Change | Phase |
 |---|---|---|
 | [001](001-test-harness.md) | `./prova test`: scripted steps with expected results | 0 |
+| [002](002-spec.md) | `docs/spec.md`: the contract/runtime interface, implemented and planned | 0 |
