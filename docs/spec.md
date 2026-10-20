@@ -78,7 +78,10 @@ Calldata and return data are the Ethereum ABI.
 Decoding is checked like solc, and every failure reverts with **empty** data:
 calldata shorter than the head; a dynamic value's offset or length pointing
 past the end; a non-canonical value word (`widen(decoded) != word`, enum
-`>= variants`). Trailing bytes after the arguments are ignored, and any
+`>= variants`). One exception, also as solc: a dynamic length above
+2^64 − 1 reverts with `Panic(0x41)` (solc additionally panics for lengths
+just below 2^64, where its free memory pointer would overflow; here those
+revert with empty data). Trailing bytes after the arguments are ignored, and any
 offset inside the buffer is accepted, as in solc.
 
 A selector is written as 4 raw bytes before the tuple (calldata, `Error`,

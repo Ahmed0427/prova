@@ -307,7 +307,7 @@ the test would not have exercised the journal.
 ## 6. Commits
 
 - Solang: `00911b36 add calls between riscv contracts with return data and try/catch`
-- prova: filled in by the next commit.
+- prova: `2e30b75 add calls between contracts with per-frame journals in the guest`
 
 ## 7. Open issues / follow-ups
 
