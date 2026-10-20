@@ -11,7 +11,7 @@ Status tags: **implemented** (the compiler emits it and the SP1 guest
 provides it), **planned** (proposed here; the signature is final only once
 its log entry in `docs/log/` lands and the tag changes).
 
-Interface version: **4** (weak shift helpers; several contracts per program, log 009).
+Interface version: **5** (calls between contracts, log 010).
 
 ## 1. Object file
 
@@ -34,8 +34,10 @@ renames them (§7).
 ### Memory
 
 - The contract's heap is a 64 KiB static array inside the object
-  (`stdlib/heap.c`). Every entry point re-initialises it (`__init_heap`).
-  Running out of heap calls `__sys_revert(NULL, 0)`.
+  (`stdlib/heap.c`). The first entry into the object initialises it; later
+  entries in the same program run (a re-entrant call, A → B → A) keep it.
+  Memory a frame allocated is not freed when the frame ends; running out of
+  heap calls `__sys_revert(NULL, 0)`.
 - The contract uses the caller's stack. Its depth is not bounded by the
   contract.
 - SP1 traps on misaligned loads and stores; the compiler keeps its own
@@ -57,8 +59,8 @@ void solang_call  (const uint8_t *input, uint32_t len);   // implemented
 | `solang_deploy` | the ABI-encoded constructor arguments, **no** selector | `__init_heap`; run the state variable initializers; decode the arguments and run the constructor (if any); `__sys_return(NULL, 0)` |
 | `solang_call` | 4-byte selector, then the ABI-encoded arguments | `__init_heap`; `len < 4` or an unknown selector reverts with empty data; decode the arguments, run the function, ABI-encode its return values; `__sys_return(out, out_len)` |
 
-There is no fallback or receive function dispatch yet (planned with
-phase 2 calls).
+There is no `fallback` or `receive` dispatch: calldata that matches no
+selector reverts.
 
 ### ABI
 
@@ -199,8 +201,8 @@ _Noreturn void __sys_revert(const uint8_t *data, uint64_t len);
 
 - `__sys_return`: the execution succeeded; `data` is the ABI-encoded return
   value (empty for `deploy` and for functions with no returns).
-- `__sys_revert`: the execution failed; **all** storage writes of this
-  execution are discarded. `data` is the revert data:
+- `__sys_revert`: the execution failed; its storage writes and events are
+  discarded (see revert scope below). `data` is the revert data:
 
 | Cause | Revert data |
 |---|---|
@@ -217,20 +219,54 @@ _Noreturn void __sys_revert(const uint8_t *data, uint64_t len);
 
 Neither function returns. The compiler emits `unreachable` after the call.
 
-**Revert scope.** Today there is one execution per transaction, so a revert
-ends the transaction. With nested calls (planned, phase 2) `__sys_revert`
-ends only the current call frame: it discards that frame's writes and
-returns failure to the caller; only a top-level revert ends the transaction.
+**Revert scope.** `__sys_return`/`__sys_revert` end the current *call
+frame*. In a call from another contract (§3.7) the caller's `__sys_call`
+then returns 0 or 1; only the outermost frame ends the transaction. A
+revert discards the storage writes and events of its frame and of every
+frame below it, and nothing else.
 
-### 3.7 Planned imports
+### 3.7 Calls to other contracts — implemented
 
-Proposed signatures. Each will be settled, with the options considered, in
-its log entry.
+```c
+uint64_t __sys_call        (const uint8_t addr[20], const uint64_t value[4],
+                            const uint8_t *input, uint64_t len);
+uint64_t __sys_staticcall  (const uint8_t addr[20], const uint8_t *input, uint64_t len);
+uint64_t __sys_delegatecall(const uint8_t addr[20], const uint8_t *input, uint64_t len);
+uint64_t __sys_returndata_size(void);
+void     __sys_returndata_copy(uint8_t *dest, uint64_t offset, uint64_t len);
+```
 
-| Import | Proposed signature | Solidity | Phase |
-|---|---|---|---|
-| `__sys_call` | `uint64_t (const uint8_t addr[20], const uint64_t value[4], const uint8_t *input, uint64_t len)` → 0 success, 1 revert | external calls | 2 |
-| `__sys_returndata_size` / `__sys_returndata_copy` | `uint64_t (void)` / `void (uint8_t *dest, uint64_t offset, uint64_t len)` | return data of the last call | 2 |
+A call runs the callee's `solang_call` with `input` as calldata in a new
+frame and returns **0** if the callee ended in `__sys_return`, **1** if it
+ended in `__sys_revert` (or the call could not be made). Either way, what
+the callee passed to `__sys_return`/`__sys_revert` becomes the *return
+data*, readable with `__sys_returndata_size`/`__sys_returndata_copy` until
+the next call. `returndata_copy` out of range reverts the caller.
+
+| | runs code of | storage, `address(this)`, events | `msg.sender` | `msg.value` | static |
+|---|---|---|---|---|---|
+| `__sys_call` | `addr` | `addr` | caller's `address(this)` | `value` | inherited |
+| `__sys_staticcall` | `addr` | `addr` | caller's `address(this)` | 0 | yes |
+| `__sys_delegatecall` | `addr` | the caller's | the caller's `msg.sender` | the caller's | inherited |
+
+- In a static frame (and below it) `__sys_sstore` and `__sys_log` revert the
+  frame; `__sys_call` with a non-zero value fails (returns 1).
+- Calling an address without code succeeds with empty return data, as on
+  Ethereum.
+- More than 1024 nested frames: the call fails (returns 1).
+- No balances: `value` becomes the callee's `msg.value`, nothing moves.
+
+What the compiler does with it: a high-level call `other.f(x)` reverts
+with the callee's revert data when the callee reverts, as solc does;
+`try`/`catch` and low-level `.call`/`.staticcall`/`.delegatecall` see the
+status. Solang calls `view` functions of other contracts with `__sys_call`,
+where solc would use `STATICCALL`. Contract creation from a contract (`new
+C()`) is not supported.
+
+### 3.8 Planned imports
+
+None are planned for now. Balances and value transfer, `new C()`, and gas
+metering (see `docs/design-legacy-evm-and-gas.md`) would each add imports.
 
 ## 4. SP1 guest input — implemented
 
@@ -323,7 +359,17 @@ Every other symbol is local or weak, so nothing else collides. The guest's
 build script links all of them and generates a table `name → (deploy,
 call)`; an account's `code` names its row.
 
-Calls between contracts and the per-frame state they need are planned
-(phase 2, log 010). The `__init_heap` reset at every entry point means a
-re-entrant call into a contract still running would clobber its heap; this
-has to be solved with them.
+With several contracts linked, `__sys_call` (§3.7) finds the code at an
+address through the guest's registry (an account's `code` name → its row in
+the table).
+
+### How the SP1 guest implements frames
+
+Each frame has a *resume point*: before calling an entry point, the guest
+saves `ra`, `sp` and `s0`–`s11` (a few lines of RISC-V assembly,
+`prova_enter`); `__sys_return`/`__sys_revert` restore them (`prova_leave`),
+so control comes back to the guest code that entered the frame, which then
+pops the frame. Storage writes go to a journal (address, slot, old value);
+a reverted frame rolls the journal and the event list back to their lengths
+at the frame's start. The contract object knows none of this: to it,
+`__sys_return`/`__sys_revert` simply never return.

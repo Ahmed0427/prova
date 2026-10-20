@@ -89,6 +89,20 @@ as a tuple, so strings get an offset and a tail. Hex is right-aligned like a num
 the full word: `bytes4 0xcafebabe` is
 `0xcafebabe00000000000000000000000000000000000000000000000000000000`.
 
+## Calls between contracts
+
+Contracts linked into the same guest can call each other (`other.f(x)`,
+`try`/`catch`, `.call`, `.staticcall`, `.delegatecall`). Each call runs in
+its own frame; a revert undoes that frame's storage writes and events and
+returns failure to the caller, and only a revert in the outermost frame
+ends the transaction. `tests/calls.test` shows it:
+
+```bash
+./prova compile contracts/calls.sol
+./prova run '--to 0xb deploy callee' '--to 0xa deploy caller 0xb' \
+    '--to 0xa tryRevert(uint256) 9'
+```
+
 ## Transaction context
 
 `msg.sender`, `msg.value`, `address(this)`, `block.number` and
@@ -155,6 +169,8 @@ T solang_deploy, solang_call      the contract's entry points (ptr, len)
 U __sys_sload, __sys_sstore       storage, a slot and a value as 4×u64 limbs each
 U __sys_keccak256                 keccak256, for hashing and mapping slots
 U __sys_log                       events (topics + data)
+U __sys_call, __sys_staticcall,   calls to other contracts, and their return data
+  __sys_delegatecall, __sys_returndata_size, __sys_returndata_copy
 U __sys_caller, __sys_callvalue,  the transaction context
   __sys_address, __sys_block_number, __sys_timestamp
 U __sys_return, __sys_revert      end of the transaction
@@ -210,7 +226,8 @@ docs/review.md  a longer walkthrough of the Solang side and the design
 - **The contracts are part of the program.** Compiling a different set
   rebuilds the guest and changes the verifying key.
 - **What's not supported yet:** storage arrays and storage strings,
-  dynamic arrays in the ABI, `abi.encodePacked`, external calls. Using them makes
+  dynamic arrays in the ABI, `abi.encodePacked`, creating contracts from
+  contracts (`new C()`), balances and value transfer. Using them makes
   Solang panic with `unimplemented`.
 - **Known deviations from solc:** `min / -1` reverts even in `unchecked`.
   See `docs/spec.md`.
