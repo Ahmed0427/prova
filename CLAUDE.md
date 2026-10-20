@@ -54,7 +54,7 @@ contracts/*.sol --solang--> build/contracts/*.o --link--> guest --SP1--> public 
 - Proving needs a lot of RAM (did not finish on 14 GB). Execution (`run`) is cheap after the first `sp1-sdk` build.
 - Re-run `./prova setup` after switching Solang branches: the r55 branch builds `target/riscv` with different flags and `make` won't notice. Also after editing `stdlib/*.c` in Solang: Solang's `build.rs` has no `rerun-if-changed` for the stdlib, so `cargo build` keeps the old bitcode (`make -C stdlib` fixes it).
 - `__init_heap` is idempotent on riscv (re-entrant calls share a contract's heap); memory a frame allocated is not freed when it ends.
-- The guest's `tiny-keccak` is patched to SP1's fork (`guest/Cargo.toml`), which runs the keccak precompile; `tests/mappings.test` checks `KECCAK_PERMUTE` counts.
+- The guest's `tiny-keccak` is patched to SP1's fork (`guest/Cargo.toml`), which runs the keccak precompile; `tests/mappings.test` checks `KECCAK_PERMUTE` counts. Both guests also patch `sha2` (sp1-zkvm hashes the public values with it), so `run` shows `SHA_EXTEND`/`SHA_COMPRESS` precompile calls.
 - Unsupported Solidity features (Solang panics with `unimplemented`): storage arrays and strings, dynamic arrays in the ABI, `abi.encodePacked`, `new C()`, indexed event fields of reference types.
 - Known deviations from solc: `type(intN).min / -1` reverts even in `unchecked`. RISC-V never traps on arithmetic, so every check wasm gets "for free" from a trap must be emitted explicitly (see log 003).
 - Starting state is host-supplied and only made public, not proven to be real chain state.

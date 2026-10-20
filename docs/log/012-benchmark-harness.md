@@ -241,7 +241,7 @@ $ ./prova test             all 11 test files passed (compute.test 10/10)
 ## 6. Commits
 
 - Solang: none (the fix it found is 011).
-- prova: filled in by the next commit.
+- prova: `e8120a5 add a revm guest and ./prova bench to compare native and evm execution`
 
 ## 7. Open issues / follow-ups
 
