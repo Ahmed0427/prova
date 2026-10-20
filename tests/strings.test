@@ -40,8 +40,17 @@ echo(string) 0x1000
 echo(string) -1
     reverts
     output 0x
-# A huge length:
+# A length that could never be allocated (> 2^64 - 1) is Panic(0x41), as in
+# solc; a large one that merely runs past the end reverts with empty data.
+# (solc also panics for lengths just below 2^64, where its memory pointer
+# would overflow; we revert with empty data there. See docs/log/011.)
 echo(string) 0x20 -1
+    reverts
+    output 0x4e487b710000000000000000000000000000000000000000000000000000000000000041
+echo(string) 0x20 0x10000000000000000
+    reverts
+    output 0x4e487b710000000000000000000000000000000000000000000000000000000000000041
+echo(string) 0x20 0xffffffffffffffff
     reverts
     output 0x
 # No head at all:

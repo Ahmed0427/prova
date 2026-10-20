@@ -16,3 +16,4 @@ the real diff, verification, commits, and open issues.
 | [008](008-erc20.md) | `contracts/erc20.sol` and its test; `error "msg"` expectation | 1 |
 | [009](009-several-contracts.md) | several contracts in one guest: renamed entry points, weak helpers, address → contract registry, per-account state | 2 |
 | [010](010-nested-calls.md) | calls between contracts: `__sys_call` family, per-frame journal, setjmp-style unwinding, re-entrant heap, try/catch | 2 |
+| [011](011-abi-length-panic.md) | oversized dynamic ABI length reverts with `Panic(0x41)`, found by comparing with revm | 3 |
