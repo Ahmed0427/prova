@@ -146,7 +146,7 @@ Requirements: everything `./prova setup` needs, plus `solc` (0.8.x) on PATH.
 
 ```bash
 ./prova setup
-./prova bench tests/erc20.test      # tables go to build/bench/erc20.md
+./prova bench tests/erc20.test      
 ./prova bench tests/compute.test
 ./prova bench tests/calls.test
 ```
