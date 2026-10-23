@@ -10,6 +10,29 @@ use sp1_sdk::SP1Stdin;
 use std::fmt::Write;
 use std::path::Path;
 
+/// A step as a short label: no options, no argument types.
+/// `--from 0xa11ce transfer(address,uint256) 0xb0b 300` -> `transfer 0xb0b 300`.
+fn short_label(label: &str) -> String {
+    let mut words = Vec::new();
+    let mut tokens = label.split_whitespace();
+    while let Some(token) = tokens.next() {
+        if token.starts_with("--") {
+            tokens.next();
+        } else {
+            words.push(token.split('(').next().unwrap());
+        }
+    }
+    crate::abbreviate(&words.join(" "), 24)
+}
+
+/// One plain-text table row, at most 80 characters.
+fn row(cells: [&str; 7]) -> String {
+    format!(
+        "{:<24} {:>9} {:>9} {:>10} {:>10} {:>6} {:>6}",
+        cells[0], cells[1], cells[2], cells[3], cells[4], cells[5], cells[6]
+    )
+}
+
 /// The solc output for each linked contract, from build/evm (`./prova bench`
 /// writes it with `solc --optimize --bin --bin-runtime`).
 fn evm_codes() -> Vec<EvmCode> {
@@ -65,13 +88,6 @@ fn region(run: &Run, name: &str) -> u64 {
     run.regions.get(name).copied().unwrap_or(0)
 }
 
-fn keccaks(run: &Run) -> u64 {
-    run.syscalls
-        .iter()
-        .find(|(name, _)| name == "KECCAK_PERMUTE")
-        .map_or(0, |(_, count)| *count)
-}
-
 pub fn bench(prover: &CpuProver, path: &str) -> bool {
     let text = std::fs::read_to_string(path).unwrap_or_else(|err| fail(&format!("{path}: {err}")));
     let cases = script::parse(&text).unwrap_or_else(|err| fail(&format!("{path}: {err}")));
@@ -80,10 +96,18 @@ pub fn bench(prover: &CpuProver, path: &str) -> bool {
     let mut table = String::new();
     writeln!(
         table,
-        "| step | native execute | native total | revm execute | revm total | execute ×  | total × | keccak-f (native / revm) |"
+        "{}",
+        row([
+            "step",
+            "nat exec",
+            "nat total",
+            "revm exec",
+            "revm total",
+            "exec x",
+            "tot x"
+        ])
     )
     .unwrap();
-    writeln!(table, "|---|--:|--:|--:|--:|--:|--:|--:|").unwrap();
 
     let (mut native_state, mut evm_state) = (State::new(), State::new());
     let mut same = true;
@@ -120,16 +144,16 @@ pub fn bench(prover: &CpuProver, path: &str) -> bool {
         let (ne, ee) = (region(&n, "execute"), region(&e, "execute"));
         writeln!(
             table,
-            "| `{}` | {} | {} | {} | {} | {:.1} | {:.1} | {} / {} |",
-            case.step.label,
-            ne,
-            n.cycles,
-            ee,
-            e.cycles,
-            ee as f64 / ne.max(1) as f64,
-            e.cycles as f64 / n.cycles.max(1) as f64,
-            keccaks(&n),
-            keccaks(&e),
+            "{}",
+            row([
+                &short_label(&case.step.label),
+                &ne.to_string(),
+                &n.cycles.to_string(),
+                &ee.to_string(),
+                &e.cycles.to_string(),
+                &format!("{:.1}", ee as f64 / ne.max(1) as f64),
+                &format!("{:.1}", e.cycles as f64 / n.cycles.max(1) as f64),
+            ])
         )
         .unwrap();
         let regions = |run: &Run| {
@@ -149,12 +173,8 @@ pub fn bench(prover: &CpuProver, path: &str) -> bool {
     }
 
     println!("\n{table}");
-    let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("../build/bench");
-    std::fs::create_dir_all(&out).unwrap();
-    let stem = Path::new(path).file_stem().unwrap().to_string_lossy();
-    std::fs::write(out.join(format!("{stem}.md")), &table).unwrap();
     println!(
-        "{path}: {} (table in build/bench/{stem}.md)",
+        "{path}: {}",
         if same {
             "native and revm agree on every step"
         } else {
