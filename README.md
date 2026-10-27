@@ -11,12 +11,22 @@ contract's own instructions.
 contracts/foo.sol ──solang──► build/contracts/foo.o ──link──► guest ──SP1──► public values (+ proof)
 ```
 
+![Architecture: Solang compiles the contract to RV64IM, the guest links it, SP1 runs it](docs/architecture.svg)
+
+Supported so far: storage, mappings, `keccak256` (on SP1's keccak
+precompile), events, `msg.sender`/`msg.value`/`address(this)`/block number
+and timestamp, `string`/`bytes` in the ABI, `Error(string)` reverts, and
+`call`/`staticcall`/`delegatecall` between contracts linked into the same
+guest, with try/catch.
+
 ## Requirements
 
 - The SP1 toolchain (`sp1up`), which puts `cargo prove` and the `succinct`
   toolchain in `~/.sp1`.
-- A Solang checkout on the `sp1-target` branch, at `~/void/projects/solang`
-  (or set `SOLANG_DIR`).
+- A Solang checkout on the `sp1-target` branch of
+  [Ahmed0427/solang](https://github.com/Ahmed0427/solang/tree/sp1-target),
+  at `~/void/projects/solang` (or set `SOLANG_DIR`):
+  `git clone -b sp1-target https://github.com/Ahmed0427/solang ~/void/projects/solang`
 - Solang's LLVM 16 build, at `~/llvm16/llvm16.0` (or set `LLVM_SYS_160_PREFIX`).
 - A system LLVM with the RISC-V backend (`llc`, `llvm-objdump`). Solang's own
   LLVM can't emit RISC-V code, so it calls the system `llc`.
@@ -206,6 +216,38 @@ One SP1 run is one transaction:
    `(reverted, output, logs, state after)`; after a revert there are no
    logs and the state after is the state before. Then halt.
 
+### One transaction, step by step
+
+`./prova run --from 0xa11ce 'deploy 1000' 'transfer(address,uint256) 0xb0b 300'`
+on the ERC-20, second step:
+
+1. **Compile.** `./prova compile contracts/erc20.sol` runs Solang with
+   `--target riscv`, renames `solang_deploy`/`solang_call` to
+   `prova_deploy_erc20`/`prova_call_erc20`, and writes
+   `build/contracts/erc20.o` and `build/contracts.txt`.
+2. **Build.** `guest/build.rs` links every object in `contracts.txt` and
+   generates the `CODES` table (name → entry points); `host/build.rs` builds
+   the guest ELF and the host embeds it.
+3. **Prepare.** The host computes the selector of `transfer(address,uint256)`
+   (`a9059cbb`), ABI-encodes `0xb0b` and `300`, and builds the `Input`:
+   context (`from 0xa11ce`, `value 0`, `to 0xc0de`, block), calldata, and the
+   state the deploy step left.
+4. **Execute.** The host runs the guest in SP1. Each step is its own SP1 run.
+5. **Dispatch.** The guest looks up the contract at `to` (`0xc0de` unless
+   `--to` says otherwise), opens a call frame, and jumps to
+   `prova_call_erc20`. Solang's dispatcher matches `a9059cbb` to `transfer`.
+6. **Run.** The contract calls the guest for everything outside itself:
+   `__sys_callvalue` (non-payable check), `__sys_caller` (`0xa11ce`),
+   `__sys_keccak256` (each balance's mapping slot), `__sys_sload`,
+   `__sys_sstore`, and `__sys_log` (the `Transfer` event).
+7. **Return.** `__sys_return` restores the registers saved when the frame was
+   entered, so control comes back to the guest. Had it been `__sys_revert`,
+   the guest would roll back that frame's storage writes and events, and only
+   that frame's.
+8. **Commit.** The guest commits one `Public`: context, calldata,
+   `state_before`, `reverted`, output, events, `state_after`.
+9. **Repeat.** The host passes `state_after` into the next step.
+
 The committed bytes are the public values. A proof says "this guest, with this
 contract linked in, produced these public values". Changing any of them makes
 verification fail, and so does linking a different contract, because that
@@ -227,8 +269,7 @@ host/           runs the guest: execute, or prove and verify
 build/          compiler output (git-ignored)
 docs/spec.md    the interface between a contract object and its runtime
 docs/benchmarks.md  native vs revm cycles, and how to reproduce them
-docs/design-legacy-evm-and-gas.md  design: calling legacy EVM contracts, gas metering
-docs/log/       one entry per change: what, why, decisions, verification
+docs/evm-and-gas.md  design: calling legacy EVM contracts, gas metering
 docs/review.md  a longer walkthrough of the Solang side and the design
 ```
 

@@ -57,7 +57,7 @@ One ERC-20 `transfer` (`tests/erc20.test`, step 6):
   serialized twice (before and after), and serde serializes `[u8; 32]`
   element by element. It grows with the state, which is why the ERC-20
   steps get more expensive along the script. Committing hashes instead of
-  full state would cut it for both (log 013, option C).
+  full state would cut it for both.
 - **`primes`** is the outlier: 256-bit `%` and `/` on the native side go
   through Solang's `udivmod256` (`stdlib/bigint.c`), a shift-and-subtract
   long division with one loop iteration per quotient bit, each on 256-bit
@@ -169,7 +169,7 @@ if any step disagrees.
   conditions.
 - **Gas is off.** revm runs without gas limits or fee charging, and the
   native side has no gas metering at all. Native contracts metered by
-  instrumentation would cost more (see `docs/design-legacy-evm-and-gas.md`).
+  instrumentation would cost more (see `docs/evm-and-gas.md`).
 - **revm configuration.** revm 38 with `default-features = false`, the
   `optional_*` features that turn off balance, base fee and gas-limit
   checks, the latest hard fork (`Context::mainnet()`), and SP1's `sha3`
@@ -177,12 +177,12 @@ if any step disagrees.
 - **Compiler settings.** solc `--optimize` (200 runs, legacy pipeline, no
   `--via-ir`). Solang with LLVM -O2. `compute.sol` is compiled with
   `--no-cse` because Solang's CSE pass miscompiles its `sort` on every
-  target (log 012); for the ERC-20, `--no-cse` changes no measured
+  target; for the ERC-20, `--no-cse` changes no measured
   execution by more than 2 cycles.
 - **Storage layout.** The ERC-20 has the same storage layout under both
   compilers (all values are full words or mappings). Contracts with small
-  adjacent state variables don't: solc packs them, this target doesn't
-  (log 004), so a native contract would do fewer read-modify-write
+  adjacent state variables don't: solc packs them, this target doesn't,
+  so a native contract would do fewer read-modify-write
   operations than solc's code there.
 - **What revm does that native code doesn't:** gas accounting (even when
   not charged), the EVM's memory expansion and stack checks, jump
