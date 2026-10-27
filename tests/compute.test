@@ -2,7 +2,7 @@
 # checked against Python.
 contract contracts/compute.sol
 # Solang's common subexpression elimination misplaces an array length in
-# sort() (on every target); see docs/log/011.
+# sort() (on every target).
 solang --no-cse
 
 deploy

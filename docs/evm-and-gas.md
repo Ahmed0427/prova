@@ -3,7 +3,7 @@
 Status: design only, nothing here is implemented. It builds on what is:
 native contracts talk to the runtime only through `__sys_*` imports
 (`docs/spec.md`), and the SP1 guest implements calls between native
-contracts with its own frames and storage journal (log 010).
+contracts with its own frames and storage journal.
 
 ## Recommendations
 
@@ -114,7 +114,7 @@ stack is empty, and a precompile hook only receives the context, not the
 handler. A native contract, however, issues its call in the middle of
 compiled code. The native frame must therefore be suspended at
 `__sys_call` and resumed later: that is a coroutine with its own stack.
-The guest already does half of this: `prova_enter`/`prova_leave` (log 010)
+The guest already does half of this: `prova_enter`/`prova_leave`
 save and restore `ra`, `sp`, `s0`-`s11` to abandon a frame; a coroutine
 switch does the same in both directions between two stacks. Each native
 frame needs a stack (e.g. 64-256 KiB from the guest's heap, released when

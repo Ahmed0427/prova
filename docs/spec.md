@@ -9,9 +9,9 @@ imports with exactly these signatures and semantics.
 
 Status tags: **implemented** (the compiler emits it and the SP1 guest
 provides it), **planned** (proposed here; the signature is final only once
-its log entry in `docs/log/` lands and the tag changes).
+it is implemented and the tag changes).
 
-Interface version: **5** (calls between contracts, log 010).
+Interface version: **5** (calls between contracts).
 
 ## 1. Object file
 
@@ -70,7 +70,7 @@ Calldata and return data are the Ethereum ABI.
 |---|---|
 | value types (`uintN`, `intN`, `bool`, `address`, `bytesN`, enums, user value types) | implemented |
 | fixed-size arrays and structs of the above (inline) | implemented |
-| `string`, `bytes` (offset in the head; length + zero-padded data in the tail) | implemented, as top-level arguments and return values (log 007) |
+| `string`, `bytes` (offset in the head; length + zero-padded data in the tail) | implemented, as top-level arguments and return values |
 | dynamic arrays `T[]`, structs or fixed arrays containing `string`/`bytes` | not implemented |
 | `abi.encodePacked` | not implemented (stops compilation) |
 | external function types | not planned |
@@ -138,7 +138,7 @@ implemented (`.push`, `.length` on storage arrays don't compile).
 
 Since every value has its own slot, a contract made only of full-word values
 and mappings (an ERC-20) has the same storage as solc gives it; one with
-small values next to each other does not (solc packs them). See log 004.
+small values next to each other does not (solc packs them).
 
 ### 3.3 Hashing — implemented
 
@@ -215,7 +215,7 @@ _Noreturn void __sys_revert(const uint8_t *data, uint64_t len);
 | arithmetic overflow | `Panic(0x11)` |
 | array index out of bounds | `Panic(0x32)` |
 | division or modulo by zero | `Panic(0x12)` |
-| `type(intN).min / -1` | `Panic(0x11)`, also inside `unchecked { }` (solc wraps there; see log 003) |
+| `type(intN).min / -1` | `Panic(0x11)`, also inside `unchecked { }` (solc wraps there) |
 | out of heap | empty |
 | `require(cond, "msg")`, `revert("msg")` | `Error(string)`: `0x08c379a0` + the ABI encoding of the message |
 | custom errors `revert E(...)` | `selector(E)` + the ABI encoding of the fields |
@@ -269,7 +269,7 @@ C()`) is not supported.
 ### 3.8 Planned imports
 
 None are planned for now. Balances and value transfer, `new C()`, and gas
-metering (see `docs/design-legacy-evm-and-gas.md`) would each add imports.
+metering (see `docs/evm-and-gas.md`) would each add imports.
 
 ## 4. SP1 guest input — implemented
 
@@ -343,20 +343,19 @@ transaction. The code name in an account is meaningful only together with
 the verifying key: the key fixes which object each name runs.
 
 SP1 hashes the committed bytes with SHA-256 for the proof; both guests use
-SP1's patched `sha2`, so that is the SHA-256 precompile (log 013).
+SP1's patched `sha2`, so that is the SHA-256 precompile.
 
-Planned later: hashes or state roots in place of full state and logs
-(log 006).
+Planned later: hashes or state roots in place of full state and logs.
 
 ## 6. Compiler-side storage semantics
 
 | Item | Status |
 |---|---|
-| mapping slots, solc's | implemented (§3.2, log 004) |
-| storage packing | decided: one slot per value, no packing (log 004) |
-| storage arrays, `string`/`bytes` in storage | not implemented; if added, as solc (length at `p`, data from `keccak256(p)`; short strings inline). The ERC-20 doesn't need them (constant `name`/`symbol`, log 008) |
+| mapping slots, solc's | implemented (§3.2) |
+| storage packing | decided: one slot per value, no packing |
+| storage arrays, `string`/`bytes` in storage | not implemented; if added, as solc (length at `p`, data from `keccak256(p)`; short strings inline). The ERC-20 doesn't need them (constant `name`/`symbol`) |
 
-## 7. Multiple contracts — implemented (log 009)
+## 7. Multiple contracts — implemented
 
 Several contract objects can be linked into one program. In this repo,
 `./prova compile A.sol B.sol` compiles every contract of each file and
