@@ -15,7 +15,7 @@ SHA-256 precompiles (patched `tiny-keccak`/`sha3` and `sha2`).
 
 Numbers are RISC-V cycles from SP1's executor (`ExecutionReport`), which are
 deterministic: rerunning gives the same counts. Measured at prova
-`448d728`, Solang `c4fc132b`.
+`448d728`, Solang `7ef558d7`.
 
 ## Summary
 

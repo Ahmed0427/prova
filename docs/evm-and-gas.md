@@ -151,8 +151,7 @@ What C rules out, and what it costs:
 - **Balances.** revm has them; the native runtime (phase 2) doesn't.
   Under C, `msg.value` moves real balances for both kinds of frames.
 - **Precompile addresses.** 0x01-0x11 (and 0x100) are precompiles; native
-  contracts must not be deployed there (the benchmark ran into this, log
-  012).
+  contracts must not be deployed there (the benchmark ran into this).
 - **Contract creation.** `CREATE`/`CREATE2` of native contracts would put a
   marker as code; the object must already be linked into the guest.
 
