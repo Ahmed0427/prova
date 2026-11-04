@@ -415,11 +415,6 @@ fn prove_cpu(prover: &CpuProver, step: &Step, state: &State) {
 /// Proves the step on the Succinct prover network, as a compressed proof:
 /// setup, the network's simulation and verification run locally.
 fn prove_network(step: &Step, state: &State) {
-    // The SDK reports the request id and explorer link through `tracing`.
-    if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "sp1_sdk=info");
-    }
-    sp1_sdk::utils::setup_logger();
     let prover = ProverClient::builder()
         .network_for(NetworkMode::Mainnet)
         .build();
@@ -430,6 +425,17 @@ fn prove_network(step: &Step, state: &State) {
             .timeout(NETWORK_TIMEOUT)
             .run()
     });
+}
+
+/// Prepares network proving at the start of `main`, while the process has one
+/// thread (so `set_var` is safe): checks the key and turns on the SDK's log,
+/// which reports the request id and explorer link through `tracing`.
+fn network_setup() {
+    require_network_key();
+    if std::env::var_os("RUST_LOG").is_none() {
+        std::env::set_var("RUST_LOG", "sp1_sdk=info");
+    }
+    sp1_sdk::utils::setup_logger();
 }
 
 /// Exits with an error, before any slow work, if NETWORK_PRIVATE_KEY is unset
@@ -521,6 +527,14 @@ fn main() {
         return;
     }
 
+    let prove_last = args.iter().any(|arg| arg == "--prove");
+    // Only `--prove` looks at SP1_PROVER: run, test and bench always execute
+    // on the CPU.
+    let network = prove_last && std::env::var("SP1_PROVER").is_ok_and(|mode| mode == "network");
+    if network {
+        network_setup();
+    }
+
     let prover = ProverClient::builder().cpu().build();
 
     if args.first().is_some_and(|arg| arg == "--test") {
@@ -536,13 +550,6 @@ fn main() {
         exit(if bench::bench(&prover, path) { 0 } else { 1 });
     }
 
-    let prove_last = args.iter().any(|arg| arg == "--prove");
-    // Only `--prove` looks at SP1_PROVER: run, test and bench always execute
-    // on the CPU.
-    let network = prove_last && std::env::var("SP1_PROVER").is_ok_and(|mode| mode == "network");
-    if network {
-        require_network_key();
-    }
     let mut defaults = default_context();
     let mut steps = Vec::new();
     let mut args = args.iter().filter(|arg| *arg != "--prove");
