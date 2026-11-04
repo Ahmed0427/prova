@@ -263,13 +263,17 @@ build.**
   to the next.
 - `:176 prove` (`./prova prove`):
   1. `setup` gives the verifying key;
-  2. `prove(...).core()` generates the proof;
+  2. `prove(...).core()` generates the proof (with `--network`, a compressed
+     proof from the Succinct prover network instead, see
+     `docs/network-proving.md`), saved to `build/proof.bin`;
   3. `verify` checks it;
   4. it then flips the `reverted` flag in the public values and expects
      verification to fail.
 
 Proving needs more RAM than this 14 GB laptop has. Setup worked and printed
-a verifying key, but the proof never finished.
+a verifying key, but the proof never finished. `./prova prove --network`
+sends the proving to Succinct's prover network instead; it has not been run
+yet.
 
 ---
 

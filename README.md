@@ -79,7 +79,8 @@ That trace costs most of the cycles shown; `./prova bench` turns it off.
 | `./prova setup` | Rebuilds Solang's RISC-V stdlib bitcode and Solang itself. |
 | `./prova compile FILE.sol...` | Compiles every contract in the files with `--target riscv` into `build/contracts/NAME.o`, renaming each one's entry points so that all of them link into the guest. |
 | `./prova run STEP...` | Executes the steps in SP1, in order. Each step starts from the state the previous one left. |
-| `./prova prove STEP...` | Executes every step except the last, proves the last one, verifies the proof, then shows that a tampered copy is rejected. |
+| `./prova prove STEP...` | Executes every step except the last, proves the last one, verifies the proof, then shows that a tampered copy is rejected. The proof is saved to `build/proof.bin`. |
+| `./prova prove --network STEP...` | The same, but the last step is proven (compressed) by the Succinct prover network, paid in PROVE. Needs `NETWORK_PRIVATE_KEY`; `SP1_PROVER=network` does the same. See [docs/network-proving.md](docs/network-proving.md). Untested so far. |
 | `./prova test [FILE...]` | Runs test scripts, by default every `tests/*.test`. See [Tests](#tests). |
 | `./prova bench FILE.test...` | Runs a test script's steps natively and as `solc --optimize` bytecode in revm (a second SP1 guest), checks both give the same public values, and compares cycles. See [docs/benchmarks.md](docs/benchmarks.md). |
 | `./prova inspect` | Prints the object's symbols and instruction set, and writes its disassembly to `build/contract.s`. |
@@ -271,13 +272,15 @@ docs/spec.md    the interface between a contract object and its runtime
 docs/benchmarks.md  native vs revm cycles, and how to reproduce them
 docs/evm-and-gas.md  design: calling legacy EVM contracts, gas metering
 docs/review.md  a longer walkthrough of the Solang side and the design
+docs/network-proving.md  proving on the Succinct prover network
 ```
 
 ## Gotchas
 
 - **Proving needs a lot of RAM.** It didn't finish on a 14 GB laptop. Use a
   bigger machine, a GPU (`.cuda()` in `host/src/main.rs`), or Succinct's
-  prover network (`.network()`).
+  prover network (`./prova prove --network`, see
+  [docs/network-proving.md](docs/network-proving.md)).
 - **`./prova setup` after switching Solang branches.** The r55 branch builds
   `target/riscv` with other flags, and `make` won't notice the difference.
 - **The contracts are part of the program.** Compiling a different set

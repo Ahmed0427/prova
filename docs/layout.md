@@ -64,12 +64,14 @@ prova/
 
 | File | Purpose |
 |---|---|
-| `Cargo.toml` | Depends on `sp1-sdk` (`profiling` for cycle regions) and `common`. |
+| `Cargo.toml` | Depends on `sp1-sdk` (`profiling` for cycle regions, `network` for |
+| | `prove --network`) and `common`. |
 | `build.rs` | Builds both guest ELFs with `sp1_build`, and passes the contract names |
 | | from `build/contracts.txt` as `PROVA_CONTRACTS`. |
 | `src/main.rs` | CLI: parses options and steps, computes selectors, builds `Input`, |
 | | runs each step in SP1's executor, carries `state_after` to the next step, |
-| | prints results. `--prove` proves and verifies the last step. |
+| | prints results. `--prove` proves and verifies the last step, locally or |
+| | on the prover network (`SP1_PROVER=network`), and saves `build/proof.bin`. |
 | `src/abi.rs` | Splits a step into tokens and ABI-encodes the arguments as a tuple |
 | | (words in the head, strings and bytes in the tail). |
 | `src/script.rs` | Parses `tests/*.test` files and checks each step's expectations |
@@ -123,6 +125,7 @@ hold after it. `./prova test` runs them all; `./prova bench` reuses them.
 | | word layout, `Input` and `Public`; each item implemented or planned. |
 | `benchmarks.md` | Native vs revm cycle counts, how to reproduce, caveats. |
 | `evm-and-gas.md` | Design only: calling legacy EVM contracts, and gas metering. |
+| `network-proving.md` | How to prove on the Succinct prover network: setup, costs, risks. |
 | `review.md` | Walkthrough of the first version (one contract, four imports). |
 | `layout.md` | This file. |
 
