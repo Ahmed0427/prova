@@ -1,8 +1,11 @@
 use prova_common::{Account, Address, Context, Input, Public, State, Word};
 use sp1_sdk::blocking::{CpuProver, ProveRequest, Prover, ProverClient};
-use sp1_sdk::{include_elf, Elf, HashableKey, ProvingKey, SP1PublicValues, SP1Stdin};
+use sp1_sdk::network::NetworkMode;
+use sp1_sdk::{
+    include_elf, Elf, HashableKey, ProvingKey, SP1ProofWithPublicValues, SP1PublicValues, SP1Stdin,
+};
 use std::process::exit;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tiny_keccak::{Hasher, Keccak};
 
 mod abi;
@@ -14,6 +17,9 @@ const EVM_ELF: Elf = include_elf!("prova-evm-guest");
 
 /// Where `--prove` saves the proof (bincode), before the tamper check.
 const PROOF_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../build/proof.bin");
+
+/// How long to wait for the prover network before giving up on a proof.
+const NETWORK_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 
 const USAGE: &str = "usage: prova-host [--prove] [OPTION VALUE]... STEP...
        prova-host --test FILE
@@ -36,7 +42,11 @@ for that step), unauthenticated, only made public:
   --block N             block.number     (default 1)
   --timestamp N         block.timestamp  (default 1)
 
-with --prove, the last step is proven and verified instead of executed.
+with --prove, the last step is proven and verified instead of executed, and
+the proof is saved to build/proof.bin. It is proven locally (a core proof)
+unless SP1_PROVER=network: then it is a compressed proof from the Succinct
+prover network, paid in PROVE by the key in NETWORK_PRIVATE_KEY (see
+docs/network-proving.md).
 with --test, the steps and their expected results come from FILE.
 with --bench, FILE's steps run natively and as solc bytecode in revm, and the
 cycles are compared.";
@@ -395,7 +405,41 @@ fn abbreviate(text: &str, width: usize) -> String {
     format!("{head}...")
 }
 
-fn prove(prover: &CpuProver, step: &Step, state: &State) {
+/// Proves the step locally, as a core proof (needs much more than 14 GB of RAM).
+fn prove_cpu(prover: &CpuProver, step: &Step, state: &State) {
+    prove(prover, step, state, |pk, stdin| {
+        prover.prove(pk, stdin).core().run()
+    });
+}
+
+/// Proves the step on the Succinct prover network, as a compressed proof:
+/// setup, the network's simulation and verification run locally.
+fn prove_network(step: &Step, state: &State) {
+    // The SDK reports the request id and explorer link through `tracing`.
+    if std::env::var_os("RUST_LOG").is_none() {
+        std::env::set_var("RUST_LOG", "sp1_sdk=info");
+    }
+    sp1_sdk::utils::setup_logger();
+    let prover = ProverClient::builder()
+        .network_for(NetworkMode::Mainnet)
+        .build();
+    prove(&prover, step, state, |pk, stdin| {
+        prover
+            .prove(pk, stdin)
+            .compressed()
+            .timeout(NETWORK_TIMEOUT)
+            .run()
+    });
+}
+
+/// Proves and verifies one step, then checks that a proof whose public
+/// values were changed is rejected. `request` makes the proof.
+fn prove<P: Prover>(
+    prover: &P,
+    step: &Step,
+    state: &State,
+    request: impl FnOnce(&P::ProvingKey, SP1Stdin) -> Result<SP1ProofWithPublicValues, P::Error>,
+) {
     println!("\n== proving {}", step.label);
 
     let start = Instant::now();
@@ -403,12 +447,14 @@ fn prove(prover: &CpuProver, step: &Step, state: &State) {
     println!("  setup           {:.1?}", start.elapsed());
     println!("  vkey            {}", pk.verifying_key().bytes32());
 
+    // No trace: it only adds cycles to prove; the public values are the same.
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&input(step, state, false));
     let start = Instant::now();
-    let mut proof = prover
-        .prove(&pk, stdin(step, state))
-        .core()
-        .run()
-        .expect("proving failed");
+    let mut proof = request(&pk, stdin).unwrap_or_else(|err| {
+        eprintln!("error: proving failed: {err}");
+        exit(1)
+    });
     // `proof.bytes()` only handles Plonk and Groth16 proofs (it panics on
     // core and compressed ones), so the size is that of the saved file.
     if let Err(err) = proof.save(PROOF_PATH) {
@@ -475,6 +521,9 @@ fn main() {
     }
 
     let prove_last = args.iter().any(|arg| arg == "--prove");
+    // Only `--prove` looks at SP1_PROVER: run, test and bench always execute
+    // on the CPU.
+    let network = prove_last && std::env::var("SP1_PROVER").is_ok_and(|mode| mode == "network");
     let mut defaults = default_context();
     let mut steps = Vec::new();
     let mut args = args.iter().filter(|arg| *arg != "--prove");
@@ -501,7 +550,11 @@ fn main() {
 
     for (i, step) in steps.iter().enumerate() {
         if prove_last && i == steps.len() - 1 {
-            prove(&prover, step, &state);
+            if network {
+                prove_network(step, &state);
+            } else {
+                prove_cpu(&prover, step, &state);
+            }
         } else {
             state = execute(&prover, step, &state).state_after;
         }

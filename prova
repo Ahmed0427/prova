@@ -21,6 +21,7 @@ usage: ./prova COMMAND
   compile FILE.sol...       compile every contract in the files to build/contracts/
   run STEP...               execute transactions in SP1, one after another
   prove STEP...             execute all steps but the last, then prove the last one
+  prove --network STEP...   the same, but prove on the Succinct prover network
   test [FILE...]            run test scripts (default: tests/*.test)
   bench FILE...             run a test script natively and in revm, compare cycles
   inspect                   symbols, ISA and disassembly of each contract
@@ -36,7 +37,9 @@ example:
   ./prova run 'deploy 5' 'inc(uint32) 5' 'get()'
 
 env: SOLANG_DIR (default ~/void/projects/solang), LLVM_SYS_160_PREFIX,
-     SOLANG_FLAGS (extra flags for solang compile, e.g. --no-cse)
+     SOLANG_FLAGS (extra flags for solang compile, e.g. --no-cse),
+     SP1_PROVER=network (same as prove --network), NETWORK_PRIVATE_KEY
+     (needed for network proving, see docs/network-proving.md)
 EOF
 }
 
@@ -175,6 +178,20 @@ cmd_bench() {
     done
 }
 
+# --network (anywhere among the arguments) proves on the Succinct prover network:
+# it only sets SP1_PROVER=network for the host.
+cmd_prove() {
+    local args=() arg
+    for arg in "$@"; do
+        if [[ "$arg" == "--network" ]]; then
+            export SP1_PROVER=network
+        else
+            args+=("$arg")
+        fi
+    done
+    host --prove "${args[@]}"
+}
+
 cmd_inspect() {
     require_contract
     local llvm name object
@@ -193,7 +210,7 @@ case "${1:-help}" in
 setup) shift; cmd_setup "$@" ;;
 compile) shift; cmd_compile "$@" ;;
 run) shift; host "$@" ;;
-prove) shift; host --prove "$@" ;;
+prove) shift; cmd_prove "$@" ;;
 test) shift; cmd_test "$@" ;;
 bench) shift; cmd_bench "$@" ;;
 inspect) shift; cmd_inspect ;;
