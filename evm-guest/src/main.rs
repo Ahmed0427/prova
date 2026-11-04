@@ -1,7 +1,3 @@
-//! The benchmark's baseline: the same transaction as the native guest, run
-//! as solc bytecode by revm. It reads an `EvmInput` and commits the same
-//! `Public` as the native guest, so the host can compare the two.
-
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 
@@ -25,7 +21,6 @@ pub fn main() {
             .unwrap_or_else(|| panic!("no EVM code for {name}"))
     };
 
-    // The starting state, as revm accounts: runtime code and storage.
     let mut db = CacheDB::new(EmptyDB::default());
     for account in &input.state {
         let address = Address::from(account.address);
@@ -168,7 +163,6 @@ pub fn main() {
     println!("cycle-tracker-report-end: commit");
 }
 
-/// The accounts of `before`, with their storage as `db` now has it.
 fn state_after(before: &State, db: &CacheDB<EmptyDB>) -> State {
     before
         .iter()
@@ -180,7 +174,6 @@ fn state_after(before: &State, db: &CacheDB<EmptyDB>) -> State {
         .collect()
 }
 
-/// An account's storage, sorted by slot.
 fn storage_of(db: &CacheDB<EmptyDB>, address: Address) -> Vec<(Word, Word)> {
     let slots: BTreeMap<Word, Word> = db
         .cache
