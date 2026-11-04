@@ -432,6 +432,22 @@ fn prove_network(step: &Step, state: &State) {
     });
 }
 
+/// Exits with an error, before any slow work, if NETWORK_PRIVATE_KEY is unset
+/// or empty (the SDK would panic later). Only checks that it is there: the
+/// value is never printed or stored.
+fn require_network_key() {
+    let set = std::env::var_os("NETWORK_PRIVATE_KEY")
+        .is_some_and(|key| !key.to_string_lossy().trim().is_empty());
+    if !set {
+        eprintln!(
+            "error: network proving needs NETWORK_PRIVATE_KEY, the private key of a \
+             Succinct requester account with PROVE deposited. Set it in your shell \
+             (not in a committed file) and try again; see docs/network-proving.md."
+        );
+        exit(2);
+    }
+}
+
 /// Proves and verifies one step, then checks that a proof whose public
 /// values were changed is rejected. `request` makes the proof.
 fn prove<P: Prover>(
@@ -524,6 +540,9 @@ fn main() {
     // Only `--prove` looks at SP1_PROVER: run, test and bench always execute
     // on the CPU.
     let network = prove_last && std::env::var("SP1_PROVER").is_ok_and(|mode| mode == "network");
+    if network {
+        require_network_key();
+    }
     let mut defaults = default_context();
     let mut steps = Vec::new();
     let mut args = args.iter().filter(|arg| *arg != "--prove");

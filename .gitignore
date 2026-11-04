@@ -4,3 +4,8 @@
 *.o
 *.s
 /evm-guest/target/
+
+# secrets such as NETWORK_PRIVATE_KEY
+.env
+.env.*
+*.env
