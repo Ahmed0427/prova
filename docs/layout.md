@@ -119,7 +119,6 @@ hold after it. `./prova test` runs them all; `./prova bench` reuses them.
 | File | Purpose |
 |---|---|
 | `prova-overview.md` | One-page overview: mission, goals, status, repositories. |
-| `prova-overview.pdf` | The same overview as a PDF. |
 | `architecture.svg` | Diagram: compile, link, run in SP1, benchmark. |
 | `spec.md` | The contract/runtime interface: entry points, every `__sys_*` import, |
 | | word layout, `Input` and `Public`; each item implemented or planned. |
