@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 # profiling: the guests' cycle-tracker regions (setup, execute, commit).
-sp1-sdk = { version = "6.8.0", features = ["blocking", "profiling"] }
+# network: prove on the Succinct prover network (SP1_PROVER=network).
+sp1-sdk = { version = "6.8.0", features = ["blocking", "profiling", "network"] }
 tiny-keccak = { version = "2", features = ["keccak"] }
 prova-common = { path = "../common" }
 tokio = { version = "1", features = ["sync"] }
