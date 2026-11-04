@@ -12,6 +12,9 @@ mod script;
 const ELF: Elf = include_elf!("prova-guest");
 const EVM_ELF: Elf = include_elf!("prova-evm-guest");
 
+/// Where `--prove` saves the proof (bincode), before the tamper check.
+const PROOF_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../build/proof.bin");
+
 const USAGE: &str = "usage: prova-host [--prove] [OPTION VALUE]... STEP...
        prova-host --test FILE
        prova-host --bench FILE
@@ -406,11 +409,15 @@ fn prove(prover: &CpuProver, step: &Step, state: &State) {
         .core()
         .run()
         .expect("proving failed");
-    println!(
-        "  proved          {:.1?}, {} bytes",
-        start.elapsed(),
-        proof.bytes().len()
-    );
+    // `proof.bytes()` only handles Plonk and Groth16 proofs (it panics on
+    // core and compressed ones), so the size is that of the saved file.
+    if let Err(err) = proof.save(PROOF_PATH) {
+        eprintln!("error: could not save the proof to {PROOF_PATH}: {err}");
+        exit(1);
+    }
+    let size = std::fs::metadata(PROOF_PATH).map_or(0, |meta| meta.len());
+    println!("  proved          {:.1?}", start.elapsed());
+    println!("  proof           {PROOF_PATH}, {size} bytes");
 
     let public = read_public(&proof.public_values);
     print_public(&public, &default_context());
