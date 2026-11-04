@@ -1,7 +1,3 @@
-//! What the host and the guest exchange: the guest's input, and the public
-//! values it commits. Both are bincode, written and read as one value each,
-//! so these types are the format (see docs/spec.md).
-
 #![no_std]
 extern crate alloc;
 
@@ -17,24 +13,17 @@ pub type Storage = Vec<(Word, Word)>;
 /// public: nothing proves it is a real transaction (no signature, no chain).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Context {
-    /// `msg.sender`
     pub caller: Address,
-    /// `msg.value`, big-endian
+    /// Big-endian.
     pub value: Word,
-    /// `address(this)`
     pub address: Address,
-    /// `block.number`
     pub block_number: u64,
-    /// `block.timestamp`
     pub timestamp: u64,
 }
 
-/// A contract account: which linked contract runs at `address`, and its
-/// storage.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Account {
     pub address: Address,
-    /// The contract's name, as linked into the guest (`build/contracts.txt`).
     pub code: String,
     /// Big-endian `(slot, value)` pairs, sorted by slot.
     pub storage: Storage,
@@ -43,7 +32,6 @@ pub struct Account {
 /// Every contract account, sorted by address.
 pub type State = Vec<Account>;
 
-/// The guest's only input.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Input {
     pub context: Context,
@@ -51,14 +39,13 @@ pub struct Input {
     /// constructor. `None`: call the contract at `context.address`.
     pub deploy: Option<String>,
     pub calldata: Vec<u8>,
-    /// The state the transaction starts from.
     pub state: State,
     /// Print a line per `__sys_*` call. Off for benchmarks; not committed.
     pub trace: bool,
 }
 
-/// The EVM guest's input (the benchmark's baseline): the same transaction,
-/// plus the solc bytecode for each contract name.
+/// The benchmark's revm guest input: the same transaction plus solc bytecode.
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EvmInput {
     pub input: Input,
@@ -70,21 +57,18 @@ pub struct EvmCode {
     pub name: String,
     /// Creation code; the constructor arguments are appended to it.
     pub init: Vec<u8>,
-    /// Runtime code: what the account holds after the constructor.
     pub runtime: Vec<u8>,
 }
 
-/// An event, as on Ethereum.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Log {
-    /// The contract that emitted it.
     pub address: Address,
     /// At most 4.
     pub topics: Vec<Word>,
     pub data: Vec<u8>,
 }
 
-/// The guest's only commit: the public values a proof attests to.
+/// What the guest commits: the public values a proof attests to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Public {
     pub context: Context,

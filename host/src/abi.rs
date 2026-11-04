@@ -1,15 +1,8 @@
-//! Values on the command line and in test scripts, and their Ethereum ABI
-//! encoding as a tuple.
-//!
-//! A value is one token: a 32-byte word (`42`, `-1`, `true`, `0xHEX`), a
-//! `string` (`"text"`), or a `bytes` (`hex"00ff"`).
-
 use crate::parse_word;
 use prova_common::Word;
 
 pub enum Value {
     Word(Word),
-    /// `string` or `bytes`: the length in the head's offset, then the data.
     Dynamic(Vec<u8>),
 }
 

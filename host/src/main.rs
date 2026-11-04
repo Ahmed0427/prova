@@ -15,10 +15,8 @@ mod script;
 const ELF: Elf = include_elf!("prova-guest");
 const EVM_ELF: Elf = include_elf!("prova-evm-guest");
 
-/// Where `--prove` saves the proof (bincode), before the tamper check.
 const PROOF_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../build/proof.bin");
 
-/// How long to wait for the prover network before giving up on a proof.
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 
 const USAGE: &str = "usage: prova-host [--prove] [OPTION VALUE]... STEP...
@@ -54,12 +52,10 @@ cycles are compared.";
 struct Step {
     label: String,
     context: Context,
-    /// The contract to deploy, or `None` for a call.
     deploy: Option<String>,
     calldata: Vec<u8>,
 }
 
-/// The contracts linked into the guest, from build/contracts.txt.
 fn contracts() -> Vec<&'static str> {
     env!("PROVA_CONTRACTS")
         .split(',')
@@ -83,7 +79,6 @@ fn address_from(n: u64) -> Address {
     address
 }
 
-/// Applies one context option; false if `name` isn't one.
 fn set_option(context: &mut Context, name: &str, value: &str) -> Result<bool, String> {
     match name {
         "--from" => context.caller = parse_address(value)?,
@@ -292,20 +287,15 @@ fn print_state(label: &str, state: &State) {
     }
 }
 
-/// The account at `address`, if it has code.
 fn account<'a>(state: &'a State, address: &Address) -> Option<&'a Account> {
     state.iter().find(|account| account.address == *address)
 }
 
-/// One step run in SP1's executor.
 struct Run {
     public: Public,
-    /// What the guest printed: one line per `__sys_*` call.
     trace: String,
     cycles: u64,
-    /// The syscalls other than I/O and halt, by name: the precompiles used.
     syscalls: Vec<(String, u64)>,
-    /// Cycles of the regions the guests mark: setup, execute, commit.
     regions: std::collections::HashMap<String, u64>,
 }
 
@@ -364,7 +354,6 @@ fn execute(prover: &CpuProver, step: &Step, state: &State) -> Public {
     run.public
 }
 
-/// Runs a test script; the steps share state, as with `run`.
 fn test(prover: &CpuProver, path: &str) -> bool {
     let text = std::fs::read_to_string(path).unwrap_or_else(|err| fail(&format!("{path}: {err}")));
     let cases = script::parse(&text).unwrap_or_else(|err| fail(&format!("{path}: {err}")));
@@ -405,15 +394,12 @@ fn abbreviate(text: &str, width: usize) -> String {
     format!("{head}...")
 }
 
-/// Proves the step locally, as a core proof (needs much more than 14 GB of RAM).
 fn prove_cpu(prover: &CpuProver, step: &Step, state: &State) {
     prove(prover, step, state, |pk, stdin| {
         prover.prove(pk, stdin).core().run()
     });
 }
 
-/// Proves the step on the Succinct prover network, as a compressed proof:
-/// setup, the network's simulation and verification run locally.
 fn prove_network(step: &Step, state: &State) {
     let prover = ProverClient::builder()
         .network_for(NetworkMode::Mainnet)
@@ -427,9 +413,8 @@ fn prove_network(step: &Step, state: &State) {
     });
 }
 
-/// Prepares network proving at the start of `main`, while the process has one
-/// thread (so `set_var` is safe): checks the key and turns on the SDK's log,
-/// which reports the request id and explorer link through `tracing`.
+/// Runs first in `main`, while the process has one thread, so `set_var` is safe.
+/// RUST_LOG makes the SDK log the request id and explorer link.
 fn network_setup() {
     require_network_key();
     if std::env::var_os("RUST_LOG").is_none() {
@@ -438,9 +423,7 @@ fn network_setup() {
     sp1_sdk::utils::setup_logger();
 }
 
-/// Exits with an error, before any slow work, if NETWORK_PRIVATE_KEY is unset
-/// or empty (the SDK would panic later). Only checks that it is there: the
-/// value is never printed or stored.
+/// Checks only that the key is set: its value is never printed or stored.
 fn require_network_key() {
     let set = std::env::var_os("NETWORK_PRIVATE_KEY")
         .is_some_and(|key| !key.to_string_lossy().trim().is_empty());
@@ -454,8 +437,6 @@ fn require_network_key() {
     }
 }
 
-/// Proves and verifies one step, then checks that a proof whose public
-/// values were changed is rejected. `request` makes the proof.
 fn prove<P: Prover>(
     prover: &P,
     step: &Step,
@@ -528,8 +509,7 @@ fn main() {
     }
 
     let prove_last = args.iter().any(|arg| arg == "--prove");
-    // Only `--prove` looks at SP1_PROVER: run, test and bench always execute
-    // on the CPU.
+    // Only `--prove` reads SP1_PROVER: run, test and bench always use the CPU.
     let network = prove_last && std::env::var("SP1_PROVER").is_ok_and(|mode| mode == "network");
     if network {
         network_setup();
@@ -554,7 +534,6 @@ fn main() {
     let mut steps = Vec::new();
     let mut args = args.iter().filter(|arg| *arg != "--prove");
     while let Some(arg) = args.next() {
-        // A step can start with options too, but it is one quoted argument.
         if arg.starts_with("--") && !arg.contains(char::is_whitespace) {
             let value = args
                 .next()

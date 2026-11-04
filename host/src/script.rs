@@ -1,18 +1,3 @@
-//! Test scripts (`tests/*.test`): steps, each followed by indented
-//! expectations about its result.
-//!
-//! ```text
-//! contract contracts/incrementer.sol     # read by ./prova, ignored here
-//! deploy 5
-//!     storage 0x0 = 5
-//! get()
-//!     returns 5
-//! nope()
-//!     reverts
-//! ```
-//!
-//! A step must succeed unless it is followed by `reverts`.
-
 use crate::{
     account, default_context, hex, keccak256, parse_address, parse_step, parse_word, set_option,
     short, short_address, Step,
@@ -28,24 +13,18 @@ pub struct Case {
 }
 
 pub enum Expect {
-    /// The exact output bytes: `returns WORD...` or `output 0xHEX`.
     Output(Vec<u8>),
-    /// `storage [ADDRESS] SLOT = VALUE` after the step, in the account at
-    /// ADDRESS (default: the step's `--to`); 0 also matches a missing slot.
+    /// The account defaults to the step's `--to`; 0 also matches a missing slot.
     Storage(Address, Word, Word),
-    /// `syscall NAME COUNT`: how often a precompile ran, e.g. `KECCAK_PERMUTE`.
     Syscall(String, u64),
-    /// `logs N`: the number of events.
     Logs(usize),
-    /// `log [SIGNATURE] TOPIC... [data WORD...]`: the next event. A signature
-    /// like `Transfer(address,address,uint256)` stands for its keccak256.
+    /// A signature like `Transfer(address,address,uint256)` stands for its keccak256.
     Log(Vec<Word>, Vec<u8>),
 }
 
 pub fn parse(text: &str) -> Result<Vec<Case>, String> {
     let mut cases: Vec<Case> = Vec::new();
-    // A line of options only, like `--from 0xa11ce --to 0xb`, sets them for
-    // the steps after it.
+    // A line of only options sets them for the steps after it.
     let mut defaults = default_context();
 
     for (i, raw) in text.lines().enumerate() {
@@ -109,7 +88,6 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
                     .map_err(|err| at(err.to_string()))?;
                 case.expect.push(Expect::Output(output));
             }
-            // `error "message"`: reverts with Error(string).
             "error" => {
                 let values = crate::abi::parse_values(words).map_err(at)?;
                 let mut output = vec![0x08, 0xc3, 0x79, 0xa0];
@@ -171,7 +149,6 @@ pub fn parse(text: &str) -> Result<Vec<Case>, String> {
     Ok(cases)
 }
 
-/// Every way the result differs from what the case expects.
 pub fn check(case: &Case, public: &Public, syscalls: &[(String, u64)]) -> Vec<String> {
     let mut failures = Vec::new();
     if public.reverted != case.reverts {

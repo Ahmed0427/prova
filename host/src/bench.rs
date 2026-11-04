@@ -1,8 +1,3 @@
-//! `--bench FILE`: runs a test script's steps natively and as solc bytecode
-//! in revm, checks that both give the same public values, and compares their
-//! cycles. Each guest marks three regions: setup (reading the input, building
-//! the state), execute (the contract or the EVM transaction) and commit.
-
 use crate::{contracts, fail, input, run_elf, script, Run, Step, ELF, EVM_ELF};
 use prova_common::{EvmCode, EvmInput, Public, State};
 use sp1_sdk::blocking::CpuProver;
@@ -10,8 +5,6 @@ use sp1_sdk::SP1Stdin;
 use std::fmt::Write;
 use std::path::Path;
 
-/// A step as a short label: no options, no argument types.
-/// `--from 0xa11ce transfer(address,uint256) 0xb0b 300` -> `transfer 0xb0b 300`.
 fn short_label(label: &str) -> String {
     let mut words = Vec::new();
     let mut tokens = label.split_whitespace();
@@ -25,7 +18,6 @@ fn short_label(label: &str) -> String {
     crate::abbreviate(&words.join(" "), 24)
 }
 
-/// One plain-text table row, at most 80 characters.
 fn row(cells: [&str; 7]) -> String {
     format!(
         "{:<24} {:>9} {:>9} {:>10} {:>10} {:>6} {:>6}",
@@ -33,8 +25,6 @@ fn row(cells: [&str; 7]) -> String {
     )
 }
 
-/// The solc output for each linked contract, from build/evm (`./prova bench`
-/// writes it with `solc --optimize --bin --bin-runtime`).
 fn evm_codes() -> Vec<EvmCode> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../build/evm");
     let read = |file: String| {

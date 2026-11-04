@@ -1,6 +1,3 @@
-//! Links every contract in build/contracts.txt and generates the code table
-//! (`CODES`) that maps a contract name to its two entry points.
-
 use std::fmt::Write;
 use std::path::Path;
 
