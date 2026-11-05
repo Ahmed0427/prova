@@ -268,7 +268,8 @@ build.**
      `docs/network-proving.md`), saved to `build/proof.bin`;
   3. `verify` checks it;
   4. it then flips the `reverted` flag in the public values and expects
-     verification to fail.
+     verification to fail: the proof is bound to all its public values,
+     and `reverted` is just the one it changes.
 
 Proving needs more RAM than this 14 GB laptop has. Setup worked and printed
 a verifying key, but the proof never finished. `./prova prove --network`

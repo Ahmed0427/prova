@@ -35,7 +35,9 @@ been tested end to end.
    for on-chain verification. [docs]
 5. **Verify locally.** prova checks the proof on your machine. Then it changes
    one public value (`reverted`) and checks that the changed proof is
-   **rejected**. This is the same check as the local path.
+   **rejected**. This shows the proof is bound to all its public values
+   (inputs and outputs), not just `reverted`. It is the same check as the
+   local path.
 
 The proven step runs without the per-syscall trace. The trace only adds
 cycles to prove, and it is not part of the public values.
