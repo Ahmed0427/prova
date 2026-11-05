@@ -65,7 +65,10 @@ Example, on the ERC-20:
 
 ## Current status
 
-Everything below runs with `./prova run` and `./prova test` (11 test files, 168 steps). No proof has been generated yet: proving did not finish on a 14 GB machine, so all numbers come from SP1 execution. `./prova prove --network` (proving on the Succinct prover network, see `docs/network-proving.md`) is implemented but has not been run yet.
+Everything below runs with `./prova run` and `./prova test` (11 test files, 168 steps). No
+proof has been generated yet: proving needs a lot of memory and computing power, so all
+numbers come from SP1 execution. `./prova prove --network` (proving on the Succinct prover
+network, see `docs/network-proving.md`) is implemented but has not been run yet.
 
 Works today:
 

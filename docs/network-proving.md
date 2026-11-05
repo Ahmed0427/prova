@@ -141,6 +141,11 @@ status is 1. The request is also listed on the explorer link.
 
 ## Costs
 
+The auction is just how the network sets prices, and the SDK handles it for
+you: `./prova prove --network` sends the request and waits for the proof or an
+error. There is nothing to bid or watch. If no prover takes the request, it
+fails with "timed out during the auction" and you run the command again.
+
 What is known:
 
 - You pay in PROVE, from the requester account's balance on the network.
@@ -149,9 +154,16 @@ What is known:
   units" (PGUs). [docs]
 - Every request has a **base fee**, plus a **max price per PGU**. Both are
   shown in the "Requesting proof" log before the proof starts. [sdk]
-- The SDK takes the base fee and the market max price from the network.
-  Unless you set it yourself, it adds a 20% buffer to the max price. [docs, sdk]
-  prova does not set a price.
+- **The default max price** has no fixed number in the SDK. The SDK asks the
+  network for the current market price per PGU and adds a 20% buffer
+  (`DEFAULT_MAX_PRICE_PER_PGU_BUFFER = 120`), so requests still get filled if
+  the price moves a little. [docs, sdk] prova keeps this default.
+- **The gas limit** comes from the SDK's local simulation of the step, so it
+  matches the step's real work, not a large fixed limit. [sdk]
+- **The most you can pay** for one request is about the base fee plus the gas
+  limit times the max price per PGU. All three numbers are in the "Requesting
+  proof" log. The winning bid can only be lower. [sdk, unconfirmed: the exact
+  settlement formula]
 - The quickstart's *example* log shows a base fee of 0.2 PROVE and a max
   price of 2 PROVE per billion PGUs. [docs] Those are the numbers for their
   example program, not a price list.

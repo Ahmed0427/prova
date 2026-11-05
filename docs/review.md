@@ -271,8 +271,8 @@ build.**
      verification to fail: the proof is bound to all its public values,
      and `reverted` is just the one it changes.
 
-Proving needs more RAM than this 14 GB laptop has. Setup worked and printed
-a verifying key, but the proof never finished. `./prova prove --network`
+Proving needs a lot of memory and computing power. Setup worked and
+printed a verifying key, but the local proof never finished. `./prova prove --network`
 sends the proving to Succinct's prover network instead; it has not been run
 yet.
 

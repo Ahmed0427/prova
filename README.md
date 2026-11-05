@@ -277,10 +277,9 @@ docs/network-proving.md  proving on the Succinct prover network
 
 ## Gotchas
 
-- **Proving needs a lot of RAM.** It didn't finish on a 14 GB laptop. Use a
-  bigger machine, a GPU (`.cuda()` in `host/src/main.rs`), or Succinct's
-  prover network (`./prova prove --network`, see
-  [docs/network-proving.md](docs/network-proving.md)).
+- **Proving needs a lot of memory and computing power.** Use a big machine, a GPU
+  (`.cuda()` in `host/src/main.rs`), or Succinct's prover network (`./prova prove
+  --network`, see [docs/network-proving.md](docs/network-proving.md)).
 - **`./prova setup` after switching Solang branches.** The r55 branch builds
   `target/riscv` with other flags, and `make` won't notice the difference.
 - **The contracts are part of the program.** Compiling a different set

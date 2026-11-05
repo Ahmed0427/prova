@@ -26,7 +26,6 @@ prova/
 | | excluded: they build for SP1's RISC-V toolchain, not for the laptop. |
 | `Cargo.lock` | Pinned versions for the workspace. |
 | `README.md` | What prova is, requirements, commands, how one transaction runs. |
-| `CLAUDE.md` | Notes for coding agents: commands, architecture, gotchas. |
 | `.gitignore` | Ignores `build/`, the `target/` folders, `*.o` and `*.s`. |
 
 ## `common/`: shared types
