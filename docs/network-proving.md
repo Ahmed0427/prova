@@ -1,9 +1,9 @@
 # Proving on the Succinct prover network
 
 `./prova prove` proves the last step on your own machine by default. That
-needs a lot of memory: it did not finish on a 14 GB laptop. With `--network`,
-the proof is made by the **Succinct prover network** instead, and you pay
-for it in the PROVE token.
+needs a lot of memory and computing power. With `--network`, the proof is made
+by the **Succinct prover network** instead, and you pay for it in the PROVE
+token. Everything else works the same: the same steps, output and checks.
 
 Where each fact comes from:
 
@@ -183,7 +183,7 @@ Unconfirmed:
 - **Paid failures.** A timed-out request is not refunded. [docs] Start with
   the smallest step (`deploy 5`).
 - **Memory of the local parts** (setup, simulation and verification):
-  unconfirmed on 14 GB, but they are not proving.
+  unconfirmed, but they need far less than proving.
 
 ## Troubleshooting
 
