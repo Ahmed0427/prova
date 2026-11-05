@@ -123,7 +123,7 @@ hold after it. `./prova test` runs them all; `./prova bench` reuses them.
 | | word layout, `Input` and `Public`; each item implemented or planned. |
 | `benchmarks.md` | Native vs revm cycle counts, how to reproduce, caveats. |
 | `evm-and-gas.md` | Design only: calling legacy EVM contracts, and gas metering. |
-| `network-proving.md` | How to prove on the Succinct prover network: setup, costs, risks. |
+| `network-proving.md` | Proving on the Succinct prover network: setup, costs, risks. |
 | `review.md` | Walkthrough of the first version (one contract, four imports). |
 | `layout.md` | This file. |
 

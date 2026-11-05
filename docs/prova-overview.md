@@ -2,13 +2,20 @@
 
 Oct 27, 2026 · @Ahmed
 
-prova compiles Solidity contracts to RISC-V machine code and runs them inside the SP1 zkVM, with no EVM interpreter. The work spans two repositories: a Solang compiler branch (`sp1-target`) that emits RV64IM object files, and the prova repository that links those objects into an SP1 program, runs transactions, proves them, and benchmarks them against revm.
+prova compiles Solidity contracts to RISC-V machine code and runs them inside the SP1
+zkVM, with no EVM interpreter. The work spans two repositories: a Solang compiler branch
+(`sp1-target`) that emits RV64IM object files, and the prova repository that links those
+objects into an SP1 program, runs transactions, proves them, and benchmarks them against
+revm.
 
-An ERC-20 runs end to end today. On the same transactions, its execution takes 3.0 to 7.0 times fewer SP1 cycles than solc bytecode run by revm inside SP1; on pure computation the gap reaches 63 times.
+An ERC-20 runs end to end today. On the same transactions, its execution takes 3.0 to 7.0
+times fewer SP1 cycles than solc bytecode run by revm inside SP1; on pure computation the
+gap reaches 63 times.
 
 ## Objectives and mission
 
-Mission: show that Solidity can be compiled directly to RISC-V and proven in a zkVM, as a working toolchain for the 2025 proposal to replace the EVM with RISC-V.
+Mission: show that Solidity can be compiled directly to RISC-V and proven in a zkVM, as a
+working toolchain for the 2025 proposal to replace the EVM with RISC-V.
 
 Objectives:
 
@@ -43,7 +50,9 @@ Non-goals (for now):
 
 ![Architecture: compile, build, run, benchmark](architecture.svg)
 
-The Solang object is linked into the SP1 guest. The guest runtime and the contract code communicate only through the entry points and the `__sys_*` imports listed in `docs/spec.md`.
+The Solang object is linked into the SP1 guest. The guest runtime and the contract code
+communicate only through the entry points and the `__sys_*` imports listed in
+`docs/spec.md`.
 
 ## How one transaction runs
 
@@ -80,7 +89,9 @@ Works today:
 
 The cycle counts for every workload are in [benchmarks.md](benchmarks.md).
 
-The speed-up is largest on pure computation and smallest on storage and division work. Most cycles per step go to committing the public values: 107,979 of 139,361 on a `transfer`.
+The speed-up is largest on pure computation and smallest on storage and division work.
+Most cycles per step go to committing the public values: 107,979 of 139,361 on a
+`transfer`.
 
 Open issues:
 
@@ -92,11 +103,16 @@ Open issues:
 
 ## Repositories
 
-| Repository | Role |
-| --- | --- |
-| [Ahmed0427/prova](https://github.com/Ahmed0427/prova) | SP1 guest, revm guest, host, tests, spec, design notes |
-| [Ahmed0427/solang `sp1-target`](https://github.com/Ahmed0427/solang/tree/sp1-target) | Solang fork with the RISC-V target |
-| [hyperledger-solang/solang](https://github.com/hyperledger-solang/solang) | Upstream Solang compiler the fork is based on |
-| [succinctlabs/sp1](https://github.com/succinctlabs/sp1) | The zkVM: executor, prover and SDKs |
-| [bluealloy/revm](https://github.com/bluealloy/revm) | EVM interpreter used as the benchmark baseline |
-| [r55-eth/r55](https://github.com/r55-eth/r55) | RISC-V Ethereum runtime; uses RV64IMAC today |
+- [Ahmed0427/prova][prova]: this repo, the guests, host, tests, spec and design notes.
+- [Ahmed0427/solang `sp1-target`][fork]: the Solang fork with the RISC-V target.
+- [hyperledger-solang/solang][solang]: upstream Solang, which the fork is based on.
+- [succinctlabs/sp1][sp1]: the zkVM, with its executor, prover and SDKs.
+- [bluealloy/revm][revm]: the EVM interpreter used as the benchmark baseline.
+- [r55-eth/r55][r55]: a RISC-V Ethereum runtime; it uses RV64IMAC today.
+
+[prova]: https://github.com/Ahmed0427/prova
+[fork]: https://github.com/Ahmed0427/solang/tree/sp1-target
+[solang]: https://github.com/hyperledger-solang/solang
+[sp1]: https://github.com/succinctlabs/sp1
+[revm]: https://github.com/bluealloy/revm
+[r55]: https://github.com/r55-eth/r55
