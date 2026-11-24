@@ -62,7 +62,6 @@ The proof is saved to `build/proof.bin` before the tamper check.
 Environment variables:
 
 - `NETWORK_PRIVATE_KEY` (needed): the requester private key. [docs, sdk]
-- `SP1_PROVER=network` (optional): the same as `--network`. Only `prove` reads it.
 - `NETWORK_RPC_URL` (optional): the network RPC. [sdk]
   - The SDK's default for mainnet is `https://rpc.mainnet.succinct.xyz`. [sdk]
 - `RUST_LOG` (optional): prova sets it to `sp1_sdk=info` if it is unset.
@@ -97,7 +96,7 @@ Run these in order, and only go on when one succeeds. Each step's proof replaces
     '--from 0xa11ce transfer(address,uint256) 0xb0b 300'
 ```
 
-`SP1_PROVER=network ./prova prove 'deploy 5'` does the same as step 1.
+Only the `--network` flag selects network proving; no environment variable does.
 
 ## Expected output
 

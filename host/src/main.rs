@@ -19,7 +19,7 @@ const PROOF_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../build/proof.bi
 
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 
-const USAGE: &str = "usage: prova-host [--prove] [OPTION VALUE]... STEP...
+const USAGE: &str = "usage: prova-host [--prove [--network]] [OPTION VALUE]... STEP...
        prova-host --test FILE
        prova-host --bench FILE
 
@@ -42,7 +42,7 @@ for that step), unauthenticated, only made public:
 
 with --prove, the last step is proven and verified instead of executed, and
 the proof is saved to build/proof.bin. It is proven locally (a core proof)
-unless SP1_PROVER=network: then it is a compressed proof from the Succinct
+unless --network is given too: then it is a compressed proof from the Succinct
 prover network, paid in PROVE by the key in NETWORK_PRIVATE_KEY (see
 docs/network-proving.md).
 with --test, the steps and their expected results come from FILE.
@@ -454,7 +454,7 @@ fn prove<P: Prover>(
     let mut stdin = SP1Stdin::new();
     stdin.write(&input(step, state, false));
     let start = Instant::now();
-    let mut proof = request(&pk, stdin).unwrap_or_else(|err| {
+    let proof = request(&pk, stdin).unwrap_or_else(|err| {
         eprintln!("error: proving failed: {err}");
         exit(1)
     });
@@ -477,12 +477,13 @@ fn prove<P: Prover>(
         verdict(verified.is_ok())
     );
 
-    let forged = Public {
+    // A copy, so `proof` (already saved) is never the forged one.
+    let mut forged = proof.clone();
+    forged.public_values = write_public(&Public {
         reverted: !public.reverted,
         ..public
-    };
-    proof.public_values = write_public(&forged);
-    let forged_verified = prover.verify(&proof, pk.verifying_key(), None);
+    });
+    let forged_verified = prover.verify(&forged, pk.verifying_key(), None);
     println!(
         "  verify(proof, reverted flipped)    {}",
         verdict(forged_verified.is_ok())
@@ -509,8 +510,12 @@ fn main() {
     }
 
     let prove_last = args.iter().any(|arg| arg == "--prove");
-    // Only `--prove` reads SP1_PROVER: run, test and bench always use the CPU.
-    let network = prove_last && std::env::var("SP1_PROVER").is_ok_and(|mode| mode == "network");
+    // Only an explicit `--network` proves on the network, never an environment variable:
+    // a network proof costs PROVE.
+    let network = args.iter().any(|arg| arg == "--network");
+    if network && !prove_last {
+        fail("--network only works with --prove");
+    }
     if network {
         network_setup();
     }
@@ -532,7 +537,9 @@ fn main() {
 
     let mut defaults = default_context();
     let mut steps = Vec::new();
-    let mut args = args.iter().filter(|arg| *arg != "--prove");
+    let mut args = args
+        .iter()
+        .filter(|arg| *arg != "--prove" && *arg != "--network");
     while let Some(arg) = args.next() {
         if arg.starts_with("--") && !arg.contains(char::is_whitespace) {
             let value = args

@@ -70,7 +70,7 @@ prova/
 | `src/main.rs` | CLI: parses options and steps, computes selectors, builds `Input`, |
 | | runs each step in SP1's executor, carries `state_after` to the next step, |
 | | prints results. `--prove` proves and verifies the last step, locally or |
-| | on the prover network (`SP1_PROVER=network`), and saves `build/proof.bin`. |
+| | on the prover network (`--network`), and saves `build/proof.bin`. |
 | `src/abi.rs` | Splits a step into tokens and ABI-encodes the arguments as a tuple |
 | | (words in the head, strings and bytes in the tail). |
 | `src/script.rs` | Parses `tests/*.test` files and checks each step's expectations |
@@ -137,4 +137,4 @@ hold after it. `./prova test` runs them all; `./prova bench` reuses them.
 | `build/contracts/NAME.s` | `./prova inspect` | Disassembly of each object. |
 | `build/evm/` | `./prova bench` | solc: `NAME.bin` (deploy), `NAME.bin-runtime`. |
 | `target/` | cargo | Host build output. |
-| `guest/target/`, `evm-guest/target/` | `sp1_build` | Guest ELFs. |
+| `guest*/target/` | `sp1_build` | Guest ELFs. |

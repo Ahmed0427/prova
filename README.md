@@ -84,7 +84,7 @@ costs most of the cycles shown; `./prova bench` turns it off.
   - The proof is saved to `build/proof.bin`.
 - `./prova prove --network STEP...`: the same, proven by the Succinct prover network.
   - The proof is compressed and paid for in PROVE. It needs `NETWORK_PRIVATE_KEY`.
-  - `SP1_PROVER=network` does the same as `--network`. Untested so far.
+  - Only the `--network` flag selects it, never an environment variable. Untested so far.
   - See [docs/network-proving.md](docs/network-proving.md).
 - `./prova test [FILE...]`: runs test scripts, by default every `tests/*.test`.
   - See [Tests](#tests).
@@ -302,6 +302,9 @@ docs/network-proving.md  proving on the Succinct prover network
   - Solang's `build.rs` doesn't watch the stdlib, so `cargo build` keeps the old bitcode.
 - **The contracts are part of the program.**
   - Compiling a different set rebuilds the guest and changes the verifying key.
+- **`./prova test` and `bench` leave the last test file's contracts linked.**
+  - Each test file recompiles its own contracts, so a later `run` uses those.
+  - `run` prints `contracts: …` first; run `./prova compile` again if they're wrong.
 - **The trace dominates cycle counts in `run` and `test`.**
   - E.g. 10.5M cycles against 233k for `hashChain(100)`.
   - Benchmarks turn it off (`Input::trace = false`).

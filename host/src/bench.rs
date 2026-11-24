@@ -158,6 +158,12 @@ pub fn bench(prover: &CpuProver, path: &str) -> bool {
         println!("  {}", crate::abbreviate(&case.step.label, 70));
         println!("      native {}", regions(&n));
         println!("      revm   {}", regions(&e));
+        if !same {
+            // The two runs now start from different states, so later steps would
+            // disagree because of this one: stop here.
+            println!("  stopping at the first mismatch");
+            break;
+        }
         native_state = n.public.state_after;
         evm_state = e.public.state_after;
     }

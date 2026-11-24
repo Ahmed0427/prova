@@ -38,8 +38,7 @@ example:
 
 env: SOLANG_DIR (default ~/void/projects/solang), LLVM_SYS_160_PREFIX,
      SOLANG_FLAGS (extra flags for solang compile, e.g. --no-cse),
-     SP1_PROVER=network (same as prove --network), NETWORK_PRIVATE_KEY
-     (needed for network proving, see docs/network-proving.md)
+     NETWORK_PRIVATE_KEY (needed for prove --network, see docs/network-proving.md)
 EOF
 }
 
@@ -178,19 +177,6 @@ cmd_bench() {
     done
 }
 
-# --network (anywhere among the arguments) proves on the Succinct prover network:
-# it only sets SP1_PROVER=network for the host.
-cmd_prove() {
-    local args=() arg
-    for arg in "$@"; do
-        if [[ "$arg" == "--network" ]]; then
-            export SP1_PROVER=network
-        else
-            args+=("$arg")
-        fi
-    done
-    host --prove "${args[@]}"
-}
 
 cmd_inspect() {
     require_contract
@@ -210,7 +196,8 @@ case "${1:-help}" in
 setup) shift; cmd_setup "$@" ;;
 compile) shift; cmd_compile "$@" ;;
 run) shift; host "$@" ;;
-prove) shift; cmd_prove "$@" ;;
+# --network, anywhere among the arguments, is passed on to the host
+prove) shift; host --prove "$@" ;;
 test) shift; cmd_test "$@" ;;
 bench) shift; cmd_bench "$@" ;;
 inspect) shift; cmd_inspect ;;
