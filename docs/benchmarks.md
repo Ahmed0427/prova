@@ -14,8 +14,8 @@ reports any number. Both use SP1's keccak and SHA-256 precompiles (patched
 `tiny-keccak`/`sha3` and `sha2`).
 
 Numbers are RISC-V cycles from SP1's executor (`ExecutionReport`), which are
-deterministic: rerunning gives the same counts. Measured at prova `448d728`, Solang
-`7ef558d7`.
+deterministic: rerunning gives the same counts. Measured at prova `aa5e1cb`, Solang
+`b93d5397`.
 
 ## Summary
 
